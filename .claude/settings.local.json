@@ -17,7 +17,16 @@
       "mcp__playwright__browser_press_key",
       "mcp__playwright__browser_snapshot",
       "mcp__playwright__browser_run_code",
-      "Bash(npm run batch:*)"
+      "Bash(npm run batch:*)",
+      "Bash(npx create-next-app:*)",
+      "Bash(npm run build:*)",
+      "Bash(curl:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(npm ls:*)",
+      "Bash(pkill:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

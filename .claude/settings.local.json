@@ -13,7 +13,11 @@
       "Bash(brew install:*)",
       "Bash(npm search:*)",
       "Bash(npm run upload:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "mcp__playwright__browser_press_key",
+      "mcp__playwright__browser_snapshot",
+      "mcp__playwright__browser_run_code",
+      "Bash(npm run batch:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

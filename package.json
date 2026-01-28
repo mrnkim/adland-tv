@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "upload": "node scripts/upload-and-analyze.js"
+    "upload": "node scripts/upload-and-analyze.js",
+    "batch": "node scripts/batch-process.js"
   },
   "repository": {
     "type": "git",

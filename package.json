@@ -1,0 +1,26 @@
+{
+  "name": "adland-tv",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "upload": "node scripts/upload-and-analyze.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mrnkim/adland-tv.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/mrnkim/adland-tv/issues"
+  },
+  "homepage": "https://github.com/mrnkim/adland-tv#readme",
+  "description": "",
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "twelvelabs-js": "^1.1.0"
+  }
+}

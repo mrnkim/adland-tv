@@ -178,3 +178,7 @@ Key features from `adlands.tv_PRD.md`:
 - Embed model: `Marengo-retrieval-2.7` produces 1024-dim vectors
 - Rate limits: 200 search calls/asset/month, 30 analyze calls/asset/month
 - SDK handles async operations and pagination automatically
+
+## Resources
+- [adland.tv](https://adland.tv/)
+- https://docs.twelvelabs.io/sdk-reference/node-js

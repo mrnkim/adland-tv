@@ -1,7 +1,23 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:docs.twelvelabs.io)"
+      "WebFetch(domain:docs.twelvelabs.io)",
+      "WebFetch(domain:adland.tv)",
+      "Bash(npx playwright:*)",
+      "Bash(node grab-video.js:*)",
+      "Bash(npm init:*)",
+      "Bash(npm install:*)",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_wait_for",
+      "Bash(brew install:*)",
+      "Bash(npm search:*)",
+      "Bash(npm run upload:*)",
+      "Bash(node:*)"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "playwright"
+  ]
 }

@@ -45,3 +45,6 @@ coverage/
 *.log
 *.pid
 *.seed
+
+# Videos
+downloads/

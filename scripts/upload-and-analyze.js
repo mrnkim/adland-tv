@@ -99,7 +99,7 @@ async function main() {
             },
             product_category: {
               type: "string",
-              enum: ["Auto", "CPG", "Tech", "Finance", "Insurance", "Healthcare", "Retail", "Food & Beverage", "Entertainment", "Sports", "Travel", "Telecom", "Beauty", "Fashion", "Alcohol", "Luxury", "Education", "Other"],
+              enum: ["Auto", "Tech", "Finance", "Insurance", "Healthcare", "Retail", "Food & Beverage", "Household & Personal Care", "Entertainment", "Sports", "Travel", "Telecom", "Beauty", "Fashion", "Luxury", "Education", "Other"],
               description: "Product category"
             },
             era_decade: {

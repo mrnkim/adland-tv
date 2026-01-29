@@ -82,7 +82,7 @@ export const FILTER_OPTIONS = {
   emotion: ["Happy", "Sad", "Exciting", "Calming", "Suspenseful", "Heartwarming", "Confident", "Playful", "Hopeful", "Nostalgic", "Empowering"],
   visual_style: ["Cinematic", "Animated", "Documentary", "Minimalist", "Bold/Colorful", "Black & White", "Retro", "High-energy", "Lifestyle", "Glamorous", "Artistic"],
   sentiment: ["Positive", "Neutral", "Provocative", "Negative"],
-  product_category: ["Auto", "CPG", "Tech", "Finance", "Insurance", "Healthcare", "Retail", "Food & Beverage", "Entertainment", "Sports", "Travel", "Telecom", "Beauty", "Fashion", "Alcohol", "Luxury", "Education", "Other"],
+  product_category: ["Auto", "Tech", "Finance", "Insurance", "Healthcare", "Retail", "Food & Beverage", "Household & Personal Care", "Entertainment", "Sports", "Travel", "Telecom", "Beauty", "Fashion", "Luxury", "Education", "Other"],
   era_decade: ["1970s", "1980s", "1990s", "2000s", "2010s", "2020s"],
 } as const;
 

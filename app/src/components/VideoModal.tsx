@@ -3,6 +3,13 @@
 import { useEffect, useRef } from 'react';
 import { UserMetadata } from '@/types';
 
+// Format seconds to mm:ss
+const formatTime = (seconds: number): string => {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
 interface VideoModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -10,6 +17,8 @@ interface VideoModalProps {
   title?: string;
   metadata?: UserMetadata;
   onFindSimilar?: () => void;
+  startTime?: number;
+  endTime?: number;
 }
 
 export default function VideoModal({
@@ -19,6 +28,8 @@ export default function VideoModal({
   title,
   metadata,
   onFindSimilar,
+  startTime,
+  endTime,
 }: VideoModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -39,14 +50,40 @@ export default function VideoModal({
     };
   }, [isOpen, onClose]);
 
-  // Auto-play when modal opens
+  // Auto-play when modal opens, seek to startTime if provided
   useEffect(() => {
     if (isOpen && videoRef.current) {
-      videoRef.current.play().catch(() => {
+      const video = videoRef.current;
+
+      // Seek to start time if provided
+      if (startTime !== undefined && startTime > 0) {
+        video.currentTime = startTime;
+      }
+
+      video.play().catch(() => {
         // Ignore autoplay errors
       });
     }
-  }, [isOpen, videoUrl]);
+  }, [isOpen, videoUrl, startTime]);
+
+  // Handle endTime - pause when reaching the end of the clip
+  useEffect(() => {
+    if (!isOpen || !videoRef.current || endTime === undefined) return;
+
+    const video = videoRef.current;
+    const handleTimeUpdate = () => {
+      if (video.currentTime >= endTime) {
+        video.pause();
+        // Optionally seek back to start of clip for replay
+        if (startTime !== undefined) {
+          video.currentTime = startTime;
+        }
+      }
+    };
+
+    video.addEventListener('timeupdate', handleTimeUpdate);
+    return () => video.removeEventListener('timeupdate', handleTimeUpdate);
+  }, [isOpen, startTime, endTime]);
 
   if (!isOpen) return null;
 
@@ -65,9 +102,16 @@ export default function VideoModal({
       <div className="bg-white rounded-2xl overflow-hidden max-w-5xl w-full max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-lg font-semibold text-gray-900 line-clamp-1">
-            {title || 'Video Player'}
-          </h2>
+          <div className="flex items-center gap-3 min-w-0">
+            <h2 className="text-lg font-semibold text-gray-900 line-clamp-1">
+              {title || 'Video Player'}
+            </h2>
+            {startTime !== undefined && endTime !== undefined && (
+              <span className="flex-shrink-0 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+                Clip: {formatTime(startTime)} - {formatTime(endTime)}
+              </span>
+            )}
+          </div>
           <button
             onClick={onClose}
             className="p-2 hover:bg-gray-100 rounded-full transition-colors"

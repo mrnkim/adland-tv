@@ -71,7 +71,8 @@ export async function POST(request: NextRequest) {
             return {
               ...result,
               index_id: indexId,
-              thumbnail_url: videoData.hls?.thumbnail_urls?.[0],
+              // Keep clip-specific thumbnail from search result, fallback to video thumbnail
+              thumbnail_url: result.thumbnail_url || videoData.hls?.thumbnail_urls?.[0],
               video_url: videoData.hls?.video_url,
               video_title: videoData.user_metadata?.title || videoData.system_metadata?.video_title,
               duration: videoData.system_metadata?.duration,

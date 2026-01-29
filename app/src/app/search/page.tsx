@@ -19,10 +19,17 @@ function SearchPageContent() {
   const initialCollection = searchParams.get('collection') || '';
 
   const [searchQuery, setSearchQuery] = useState(initialQuery);
-  const [submittedQuery, setSubmittedQuery] = useState(initialQuery || initialCategory || initialCollection);
+  const [submittedQuery, setSubmittedQuery] = useState(initialQuery || initialCategory);
   const [activeFilters, setActiveFilters] = useState<ActiveFilters>({});
-  const [selectedVideo, setSelectedVideo] = useState<SearchResult | null>(null);
+  const [selectedVideo, setSelectedVideo] = useState<SearchResult | VideoData | null>(null);
   const [showFilters, setShowFilters] = useState(true);
+
+  // Collection name mapping (must match page.tsx COLLECTIONS)
+  const collectionNames: Record<string, string> = {
+    superbowl: 'Super Bowl LX',
+    'award-winners': 'Award Winners',
+    classics: '90s Nostalgia',
+  };
 
   // Set initial filter from URL
   useEffect(() => {
@@ -30,13 +37,24 @@ function SearchPageContent() {
       setActiveFilters({ product_category: [initialCategory] });
       setSubmittedQuery(initialCategory);
     }
-    if (initialCollection) {
-      setSubmittedQuery(`${initialCollection} commercials`);
-    }
-  }, [initialCategory, initialCollection]);
+  }, [initialCategory]);
 
-  // Search query
-  const { data, isLoading, error } = useQuery({
+  // Collection query - fetch videos by metadata filter
+  const { data: collectionData, isLoading: collectionLoading, error: collectionError } = useQuery({
+    queryKey: ['collection', initialCollection],
+    queryFn: async () => {
+      const response = await fetch(`/api/videos?collection=${encodeURIComponent(initialCollection)}&pageLimit=50`);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to fetch collection');
+      }
+      return response.json();
+    },
+    enabled: !!initialCollection,
+  });
+
+  // Search query - semantic search via TwelveLabs
+  const { data: searchData, isLoading: searchLoading, error: searchError } = useQuery({
     queryKey: ['search', submittedQuery, activeFilters],
     queryFn: async () => {
       if (!submittedQuery) return { results: [], pageInfo: { total_results: 0 } };
@@ -57,8 +75,14 @@ function SearchPageContent() {
 
       return response.json();
     },
-    enabled: !!submittedQuery,
+    enabled: !!submittedQuery && !initialCollection,
   });
+
+  // Determine which data to use
+  const isCollectionMode = !!initialCollection;
+  const data = isCollectionMode ? collectionData : searchData;
+  const isLoading = isCollectionMode ? collectionLoading : searchLoading;
+  const error = isCollectionMode ? collectionError : searchError;
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
@@ -86,12 +110,51 @@ function SearchPageContent() {
     setActiveFilters({});
   };
 
-  const handleVideoClick = (video: SearchResult) => {
+  const handleVideoClick = (video: SearchResult | VideoData) => {
     setSelectedVideo(video);
   };
 
-  const results = data?.results || [];
-  const totalResults = data?.pageInfo?.total_results || 0;
+  // Type guard to check if video is SearchResult
+  const isSearchResult = (video: SearchResult | VideoData): video is SearchResult => {
+    return 'video_id' in video;
+  };
+
+  // Helper to get video properties from either type
+  const getVideoUrl = (video: SearchResult | VideoData | null) => {
+    if (!video) return undefined;
+    if (isSearchResult(video)) return video.video_url;
+    return video.hls?.video_url;
+  };
+
+  const getVideoTitle = (video: SearchResult | VideoData | null) => {
+    if (!video) return undefined;
+    if (isSearchResult(video)) return video.video_title || video.metadata?.title;
+    return video.user_metadata?.title || video.system_metadata?.video_title;
+  };
+
+  const getVideoMetadata = (video: SearchResult | VideoData | null) => {
+    if (!video) return undefined;
+    if (isSearchResult(video)) return video.metadata;
+    return video.user_metadata;
+  };
+
+  // Helper to get clip start/end times (only for SearchResult)
+  const getClipStartTime = (video: SearchResult | VideoData | null) => {
+    if (!video || !isSearchResult(video)) return undefined;
+    return video.start;
+  };
+
+  const getClipEndTime = (video: SearchResult | VideoData | null) => {
+    if (!video || !isSearchResult(video)) return undefined;
+    return video.end;
+  };
+
+  // Get results - collection returns 'videos', search returns 'results'
+  const results = isCollectionMode ? (data?.videos || []) : (data?.results || []);
+  const totalResults = data?.pageInfo?.total_results ?? results.length;
+  const displayTitle = isCollectionMode
+    ? collectionNames[initialCollection] || initialCollection
+    : submittedQuery;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -123,13 +186,13 @@ function SearchPageContent() {
             {/* Results Header */}
             <div className="flex items-center justify-between mb-6">
               <div>
-                {submittedQuery && (
+                {(submittedQuery || isCollectionMode) && (
                   <h1 className="text-xl font-semibold text-gray-900">
                     {isLoading ? (
-                      'Searching...'
+                      isCollectionMode ? 'Loading collection...' : 'Searching...'
                     ) : (
                       <>
-                        {totalResults.toLocaleString()} results for &quot;{submittedQuery}&quot;
+                        {totalResults.toLocaleString()} {isCollectionMode ? 'videos in' : 'results for'} &quot;{displayTitle}&quot;
                       </>
                     )}
                   </h1>
@@ -189,26 +252,32 @@ function SearchPageContent() {
             )}
 
             {/* Empty State */}
-            {!isLoading && !error && submittedQuery && results.length === 0 && (
+            {!isLoading && !error && (submittedQuery || isCollectionMode) && results.length === 0 && (
               <div className="text-center py-20">
                 <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
-                <h2 className="text-xl font-semibold text-gray-900 mb-2">No results found</h2>
+                <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                  {isCollectionMode ? 'No videos in this collection' : 'No results found'}
+                </h2>
                 <p className="text-gray-500 mb-4">
-                  Try adjusting your search or filters to find what you&apos;re looking for
+                  {isCollectionMode
+                    ? 'This collection doesn\'t have any videos yet'
+                    : 'Try adjusting your search or filters to find what you\'re looking for'}
                 </p>
-                <button
-                  onClick={handleClearFilters}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
-                >
-                  Clear Filters
-                </button>
+                {!isCollectionMode && (
+                  <button
+                    onClick={handleClearFilters}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+                  >
+                    Clear Filters
+                  </button>
+                )}
               </div>
             )}
 
             {/* No Query State */}
-            {!submittedQuery && (
+            {!submittedQuery && !isCollectionMode && (
               <div className="text-center py-20">
                 <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -223,12 +292,12 @@ function SearchPageContent() {
             {/* Results Grid */}
             {!isLoading && results.length > 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {results.map((result: SearchResult) => (
+                {results.map((result: SearchResult | VideoData, index: number) => (
                   <VideoCard
-                    key={result.video_id || result._id}
+                    key={`${'video_id' in result ? result.video_id : result._id}-${index}`}
                     video={result}
                     onClick={() => handleVideoClick(result)}
-                    showScore
+                    showScore={!isCollectionMode}
                   />
                 ))}
               </div>
@@ -250,9 +319,11 @@ function SearchPageContent() {
       <VideoModal
         isOpen={!!selectedVideo}
         onClose={() => setSelectedVideo(null)}
-        videoUrl={selectedVideo?.video_url}
-        title={selectedVideo?.video_title || selectedVideo?.metadata?.title}
-        metadata={selectedVideo?.metadata}
+        videoUrl={getVideoUrl(selectedVideo)}
+        title={getVideoTitle(selectedVideo)}
+        metadata={getVideoMetadata(selectedVideo)}
+        startTime={getClipStartTime(selectedVideo)}
+        endTime={getClipEndTime(selectedVideo)}
       />
     </div>
   );

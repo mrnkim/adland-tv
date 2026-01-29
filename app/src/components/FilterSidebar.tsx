@@ -7,6 +7,7 @@ interface FilterSidebarProps {
   activeFilters: ActiveFilters;
   onFilterChange: (category: string, value: string) => void;
   onClearAll: () => void;
+  onClearCategory?: (category: string) => void;
   className?: string;
 }
 
@@ -23,6 +24,7 @@ export default function FilterSidebar({
   activeFilters,
   onFilterChange,
   onClearAll,
+  onClearCategory,
   className = '',
 }: FilterSidebarProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
@@ -75,27 +77,44 @@ export default function FilterSidebar({
 
           return (
             <div key={category} className="border-b border-gray-100 pb-3 last:border-0">
-              <button
-                onClick={() => toggleCategory(category)}
-                className="w-full flex items-center justify-between py-2 text-left"
-              >
-                <span className="font-medium text-gray-800">
-                  {FILTER_LABELS[category]}
-                  {activeCount > 0 && (
-                    <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                      {activeCount}
-                    </span>
-                  )}
-                </span>
-                <svg
-                  className={`w-4 h-4 text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+              <div className="flex items-center justify-between py-2">
+                <button
+                  onClick={() => toggleCategory(category)}
+                  className="flex items-center gap-2 text-left flex-1"
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
+                  <span className="font-medium text-gray-800">
+                    {FILTER_LABELS[category]}
+                    {activeCount > 0 && (
+                      <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                        {activeCount}
+                      </span>
+                    )}
+                  </span>
+                </button>
+                <div className="flex items-center gap-2">
+                  {activeCount > 0 && onClearCategory && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onClearCategory(category);
+                      }}
+                      className="text-xs text-gray-500 hover:text-blue-600 font-medium"
+                    >
+                      Clear
+                    </button>
+                  )}
+                  <button onClick={() => toggleCategory(category)}>
+                    <svg
+                      className={`w-4 h-4 text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
 
               {isExpanded && (
                 <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">

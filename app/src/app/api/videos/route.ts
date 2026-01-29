@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 
+// Metadata filter keys that can be used for filtering
+const FILTER_KEYS = ['theme', 'emotion', 'visual_style', 'sentiment', 'product_category', 'era_decade', 'collection'];
+
 export async function GET(request: NextRequest) {
   try {
     const apiKey = process.env.TWELVELABS_API_KEY;
@@ -15,84 +18,80 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const page = searchParams.get('page') || '1';
-    const pageLimit = searchParams.get('pageLimit') || '12';
-    const collection = searchParams.get('collection');
+    const pageLimit = parseInt(searchParams.get('pageLimit') || '50');
 
-    // When filtering by collection, fetch multiple pages to find all matching videos
-    if (collection) {
-      let allVideos: any[] = [];
-      let currentPage = 1;
-      let totalPages = 1;
-      const fetchLimit = 50; // Fetch 50 per page for efficiency
-
-      do {
-        const url = new URL(`https://api.twelvelabs.io/v1.3/indexes/${indexId}/videos`);
-        url.searchParams.set('page', currentPage.toString());
-        url.searchParams.set('page_limit', fetchLimit.toString());
-
-        const response = await fetch(url.toString(), {
-          headers: {
-            'x-api-key': apiKey,
-          },
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          return NextResponse.json(
-            { error: errorData.message || 'Failed to fetch videos' },
-            { status: response.status }
-          );
-        }
-
-        const data = await response.json();
-        const pageVideos = data.data || [];
-
-        // Filter for collection
-        const collectionVideos = pageVideos.filter((v: any) => v.user_metadata?.collection === collection);
-        allVideos = [...allVideos, ...collectionVideos];
-
-        totalPages = data.page_info?.total_page || 1;
-        currentPage++;
-      } while (currentPage <= totalPages && currentPage <= 10); // Max 10 pages to prevent infinite loops
-
-      return NextResponse.json({
-        videos: allVideos,
-        pageInfo: {
-          page: 1,
-          total_page: 1,
-          total_results: allVideos.length,
-        },
-      });
-    }
-
-    // Regular pagination without collection filter
-    const url = new URL(`https://api.twelvelabs.io/v1.3/indexes/${indexId}/videos`);
-    url.searchParams.set('page', page);
-    url.searchParams.set('page_limit', pageLimit);
-
-    const response = await fetch(url.toString(), {
-      headers: {
-        'x-api-key': apiKey,
-      },
+    // Extract filters from query params
+    const filters: Record<string, string[]> = {};
+    FILTER_KEYS.forEach(key => {
+      const value = searchParams.get(key);
+      if (value) {
+        filters[key] = value.split(',');
+      }
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      return NextResponse.json(
-        { error: errorData.message || 'Failed to fetch videos' },
-        { status: response.status }
-      );
-    }
+    const hasFilters = Object.keys(filters).length > 0;
 
-    const data = await response.json();
+    // Fetch videos from TwelveLabs
+    let allVideos: any[] = [];
+    let currentPage = 1;
+    let totalPages = 1;
+    const fetchLimit = 50;
+
+    do {
+      const url = new URL(`https://api.twelvelabs.io/v1.3/indexes/${indexId}/videos`);
+      url.searchParams.set('page', currentPage.toString());
+      url.searchParams.set('page_limit', fetchLimit.toString());
+
+      const response = await fetch(url.toString(), {
+        headers: {
+          'x-api-key': apiKey,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        return NextResponse.json(
+          { error: errorData.message || 'Failed to fetch videos' },
+          { status: response.status }
+        );
+      }
+
+      const data = await response.json();
+      const pageVideos = data.data || [];
+
+      // If no filters, just add all videos
+      if (!hasFilters) {
+        allVideos = [...allVideos, ...pageVideos];
+      } else {
+        // Filter videos by metadata
+        const filteredVideos = pageVideos.filter((video: any) => {
+          return Object.entries(filters).every(([key, values]) => {
+            const metadataValue = video.user_metadata?.[key];
+            return metadataValue && values.includes(metadataValue);
+          });
+        });
+        allVideos = [...allVideos, ...filteredVideos];
+      }
+
+      totalPages = data.page_info?.total_page || 1;
+      currentPage++;
+
+      // Stop if we have enough videos or reached max pages
+      if (allVideos.length >= pageLimit || currentPage > Math.min(totalPages, 10)) {
+        break;
+      }
+    } while (currentPage <= totalPages);
+
+    // Limit results
+    const limitedVideos = allVideos.slice(0, pageLimit);
 
     return NextResponse.json({
-      videos: data.data || [],
+      videos: limitedVideos,
       pageInfo: {
-        page: data.page_info?.page || 1,
-        total_page: data.page_info?.total_page || 1,
-        total_results: data.page_info?.total_results || 0,
+        page: 1,
+        total_page: 1,
+        total_results: limitedVideos.length,
+        has_more: allVideos.length > pageLimit,
       },
     });
   } catch (error) {

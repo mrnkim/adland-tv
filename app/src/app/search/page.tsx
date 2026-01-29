@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery, useMutation } from '@tanstack/react-query';
 import SearchBar from '@/components/SearchBar';
 import VideoCard from '@/components/VideoCard';
 import VideoModal from '@/components/VideoModal';
@@ -23,6 +23,9 @@ function SearchPageContent() {
   const [activeFilters, setActiveFilters] = useState<ActiveFilters>({});
   const [selectedVideo, setSelectedVideo] = useState<SearchResult | VideoData | null>(null);
   const [showFilters, setShowFilters] = useState(true);
+  const [imageSearchMode, setImageSearchMode] = useState(false);
+  const [imageSearchResults, setImageSearchResults] = useState<SearchResult[] | null>(null);
+  const [isImageUrlSearching, setIsImageUrlSearching] = useState(false);
 
   // Collection name mapping (must match page.tsx COLLECTIONS)
   const collectionNames: Record<string, string> = {
@@ -82,19 +85,84 @@ function SearchPageContent() {
     },
     initialPageParam: undefined,
     getNextPageParam: () => undefined,
-    enabled: !!submittedQuery && !initialCollection,
+    enabled: !!submittedQuery && !initialCollection && !imageSearchMode,
+  });
+
+  // Image search mutation
+  const imageSearchMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append('image', file);
+      formData.append('pageLimit', '50');
+
+      const response = await fetch('/api/search/image', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Image search failed');
+      }
+
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setImageSearchResults(data.results);
+    },
   });
 
   // Determine which data to use
   const isCollectionMode = !!initialCollection;
   const data = isCollectionMode ? collectionData : searchData;
-  const isLoading = isCollectionMode ? collectionLoading : searchLoading;
-  const error = isCollectionMode ? collectionError : searchError;
+  const isLoading = isCollectionMode ? collectionLoading : (searchLoading || imageSearchMutation.isPending || isImageUrlSearching);
+  const error = isCollectionMode ? collectionError : (searchError || imageSearchMutation.error);
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
     setSubmittedQuery(query);
+    setImageSearchMode(false);
+    setImageSearchResults(null);
     router.push(`/search?q=${encodeURIComponent(query)}`);
+  };
+
+  const handleImageSearch = (file: File) => {
+    setImageSearchMode(true);
+    setSubmittedQuery('');
+    setSearchQuery('');
+    imageSearchMutation.mutate(file);
+  };
+
+  const handleImageUrlSearch = async (url: string) => {
+    setImageSearchMode(true);
+    setSubmittedQuery('');
+    setSearchQuery('');
+    setIsImageUrlSearching(true);
+
+    // Use FormData with imageUrl
+    const formData = new FormData();
+    formData.append('imageUrl', url);
+    formData.append('pageLimit', '50');
+
+    try {
+      const response = await fetch('/api/search/image', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Image search failed');
+      }
+
+      const data = await response.json();
+      setImageSearchResults(data.results);
+    } catch (error) {
+      console.error('Image URL search error:', error);
+      setImageSearchResults([]);
+    } finally {
+      setIsImageUrlSearching(false);
+    }
   };
 
   const handleFilterChange = (category: string, value: string) => {
@@ -158,13 +226,21 @@ function SearchPageContent() {
 
   // Get results - collection returns 'videos', search returns 'results' (flattened from infinite query pages)
   const searchResults = searchData?.pages?.flatMap((page) => page.results) || [];
-  const results = isCollectionMode ? (data?.videos || []) : searchResults;
-  const totalResults = isCollectionMode
-    ? (data?.pageInfo?.total_results ?? results.length)
-    : (searchData?.pages?.[0]?.pageInfo?.total_results ?? results.length);
-  const displayTitle = isCollectionMode
-    ? collectionNames[initialCollection] || initialCollection
-    : submittedQuery;
+  const results = imageSearchMode
+    ? (imageSearchResults || [])
+    : isCollectionMode
+      ? (data?.videos || [])
+      : searchResults;
+  const totalResults = imageSearchMode
+    ? (imageSearchResults?.length || 0)
+    : isCollectionMode
+      ? (data?.pageInfo?.total_results ?? results.length)
+      : (searchData?.pages?.[0]?.pageInfo?.total_results ?? results.length);
+  const displayTitle = imageSearchMode
+    ? 'image'
+    : isCollectionMode
+      ? collectionNames[initialCollection] || initialCollection
+      : submittedQuery;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -173,8 +249,12 @@ function SearchPageContent() {
         <div className="max-w-7xl mx-auto">
           <SearchBar
             onSearch={handleSearch}
+            onImageSearch={handleImageSearch}
+            onImageUrlSearch={handleImageUrlSearch}
             defaultValue={searchQuery}
             placeholder="Search ads by description, theme, or style..."
+            isLoading={searchLoading}
+            isImageSearching={imageSearchMutation.isPending || isImageUrlSearching}
           />
         </div>
       </div>
@@ -196,13 +276,13 @@ function SearchPageContent() {
             {/* Results Header */}
             <div className="flex items-center justify-between mb-6">
               <div>
-                {(submittedQuery || isCollectionMode) && (
+                {(submittedQuery || isCollectionMode || imageSearchMode) && (
                   <h1 className="text-xl font-semibold text-gray-900">
                     {isLoading ? (
-                      isCollectionMode ? 'Loading collection...' : 'Searching...'
+                      imageSearchMode ? 'Searching by image...' : isCollectionMode ? 'Loading collection...' : 'Searching...'
                     ) : (
                       <>
-                        {totalResults.toLocaleString()} {isCollectionMode ? 'videos in' : 'results for'} &quot;{displayTitle}&quot;
+                        {totalResults.toLocaleString()} {imageSearchMode ? 'similar videos found' : isCollectionMode ? 'videos in' : 'results for'} {!imageSearchMode && <>&quot;{displayTitle}&quot;</>}
                       </>
                     )}
                   </h1>
@@ -262,20 +342,22 @@ function SearchPageContent() {
             )}
 
             {/* Empty State */}
-            {!isLoading && !error && (submittedQuery || isCollectionMode) && results.length === 0 && (
+            {!isLoading && !error && (submittedQuery || isCollectionMode || imageSearchMode) && results.length === 0 && (
               <div className="text-center py-20">
                 <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
                 <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                  {isCollectionMode ? 'No videos in this collection' : 'No results found'}
+                  {imageSearchMode ? 'No similar videos found' : isCollectionMode ? 'No videos in this collection' : 'No results found'}
                 </h2>
                 <p className="text-gray-500 mb-4">
-                  {isCollectionMode
-                    ? 'This collection doesn\'t have any videos yet'
-                    : 'Try adjusting your search or filters to find what you\'re looking for'}
+                  {imageSearchMode
+                    ? 'Try uploading a different image'
+                    : isCollectionMode
+                      ? 'This collection doesn\'t have any videos yet'
+                      : 'Try adjusting your search or filters to find what you\'re looking for'}
                 </p>
-                {!isCollectionMode && (
+                {!isCollectionMode && !imageSearchMode && (
                   <button
                     onClick={handleClearFilters}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
@@ -287,14 +369,14 @@ function SearchPageContent() {
             )}
 
             {/* No Query State */}
-            {!submittedQuery && !isCollectionMode && (
+            {!submittedQuery && !isCollectionMode && !imageSearchMode && (
               <div className="text-center py-20">
                 <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
                 <h2 className="text-xl font-semibold text-gray-900 mb-2">Start searching</h2>
                 <p className="text-gray-500">
-                  Enter a search query above to find TV advertisements
+                  Enter a search query or upload an image to find TV advertisements
                 </p>
               </div>
             )}

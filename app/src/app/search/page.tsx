@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import SearchBar from '@/components/SearchBar';
 import VideoCard from '@/components/VideoCard';
 import VideoModal from '@/components/VideoModal';
@@ -54,7 +54,11 @@ function SearchPageContent() {
   });
 
   // Search query - semantic search via TwelveLabs
-  const { data: searchData, isLoading: searchLoading, error: searchError } = useQuery({
+  const {
+    data: searchData,
+    isLoading: searchLoading,
+    error: searchError,
+  } = useInfiniteQuery({
     queryKey: ['search', submittedQuery, activeFilters],
     queryFn: async () => {
       if (!submittedQuery) return { results: [], pageInfo: { total_results: 0 } };
@@ -65,6 +69,7 @@ function SearchPageContent() {
         body: JSON.stringify({
           query: submittedQuery,
           filters: activeFilters,
+          pageLimit: 50,
         }),
       });
 
@@ -75,6 +80,8 @@ function SearchPageContent() {
 
       return response.json();
     },
+    initialPageParam: undefined,
+    getNextPageParam: () => undefined,
     enabled: !!submittedQuery && !initialCollection,
   });
 
@@ -149,9 +156,12 @@ function SearchPageContent() {
     return video.end;
   };
 
-  // Get results - collection returns 'videos', search returns 'results'
-  const results = isCollectionMode ? (data?.videos || []) : (data?.results || []);
-  const totalResults = data?.pageInfo?.total_results ?? results.length;
+  // Get results - collection returns 'videos', search returns 'results' (flattened from infinite query pages)
+  const searchResults = searchData?.pages?.flatMap((page) => page.results) || [];
+  const results = isCollectionMode ? (data?.videos || []) : searchResults;
+  const totalResults = isCollectionMode
+    ? (data?.pageInfo?.total_results ?? results.length)
+    : (searchData?.pages?.[0]?.pageInfo?.total_results ?? results.length);
   const displayTitle = isCollectionMode
     ? collectionNames[initialCollection] || initialCollection
     : submittedQuery;
@@ -303,12 +313,10 @@ function SearchPageContent() {
               </div>
             )}
 
-            {/* Load More */}
-            {results.length > 0 && results.length < totalResults && (
-              <div className="mt-8 text-center">
-                <button className="px-6 py-3 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50">
-                  Load More Results
-                </button>
+            {/* End of results indicator */}
+            {!isLoading && results.length > 0 && results.length >= totalResults && (
+              <div className="mt-8 text-center text-gray-400 text-sm">
+                Showing all {results.length} results
               </div>
             )}
           </div>

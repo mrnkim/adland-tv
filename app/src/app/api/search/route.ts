@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { TwelveLabs } from 'twelvelabs-js';
 
 export const runtime = 'nodejs';
+
+// Initialize TwelveLabs client
+const getClient = () => {
+  const apiKey = process.env.TWELVELABS_API_KEY;
+  if (!apiKey) throw new Error('TWELVELABS_API_KEY not configured');
+  return new TwelveLabs({ apiKey });
+};
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,7 +23,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { query, pageLimit = 12, filters = {} } = body;
+    const { query, pageLimit = 50, filters = {} } = body;
 
     if (!query || query.trim() === '') {
       return NextResponse.json(
@@ -24,55 +32,47 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Build form data for TwelveLabs API
-    const formData = new FormData();
-    formData.append('query_text', query);
-    formData.append('index_id', indexId);
-    formData.append('search_options', 'visual');
-    formData.append('search_options', 'audio');
-    formData.append('adjust_confidence_level', '0.5');
-    formData.append('page_limit', pageLimit.toString());
+    const client = getClient();
 
-    const response = await fetch('https://api.twelvelabs.io/v1.3/search', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-      },
-      body: formData,
+    // Use SDK for search with automatic pagination
+    // Use only visual search for more relevant results
+    const searchResults = await client.search.query({
+      indexId,
+      queryText: query,
+      searchOptions: ['visual'],
+      adjustConfidenceLevel: 0.7,
+      pageLimit,
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('TwelveLabs search error:', errorData);
-      return NextResponse.json(
-        { error: errorData.message || 'Search failed' },
-        { status: response.status }
-      );
+    // Collect all results using async iterator
+    const allResults: any[] = [];
+    for await (const clip of searchResults) {
+      allResults.push(clip);
+      // Limit total results to prevent too many API calls
+      if (allResults.length >= pageLimit) break;
     }
 
-    const data = await response.json();
-
-    // Transform results to include video details
+    // Fetch video details for each result using direct API call
     const resultsWithDetails = await Promise.all(
-      (data.data || []).map(async (result: any) => {
+      allResults.map(async (result: any) => {
         try {
-          // Fetch video details to get metadata
           const videoResponse = await fetch(
-            `https://api.twelvelabs.io/v1.3/indexes/${indexId}/videos/${result.video_id}`,
-            {
-              headers: {
-                'x-api-key': apiKey,
-              },
-            }
+            `https://api.twelvelabs.io/v1.3/indexes/${indexId}/videos/${result.videoId}`,
+            { headers: { 'x-api-key': apiKey } }
           );
 
           if (videoResponse.ok) {
             const videoData = await videoResponse.json();
+            // Use rank to calculate a score (rank 1 = 100%, higher ranks = lower %)
+            const calculatedScore = Math.max(0, 1 - (result.rank - 1) * 0.02);
             return {
-              ...result,
+              rank: result.rank,
+              start: result.start,
+              end: result.end,
+              video_id: result.videoId,
+              score: calculatedScore,
+              thumbnail_url: result.thumbnailUrl,
               index_id: indexId,
-              // Keep clip-specific thumbnail from search result, fallback to video thumbnail
-              thumbnail_url: result.thumbnail_url || videoData.hls?.thumbnail_urls?.[0],
               video_url: videoData.hls?.video_url,
               video_title: videoData.user_metadata?.title || videoData.system_metadata?.video_title,
               duration: videoData.system_metadata?.duration,
@@ -82,7 +82,16 @@ export async function POST(request: NextRequest) {
         } catch (e) {
           console.error('Error fetching video details:', e);
         }
-        return result;
+        const calculatedScore = Math.max(0, 1 - (result.rank - 1) * 0.02);
+        return {
+          rank: result.rank,
+          start: result.start,
+          end: result.end,
+          video_id: result.videoId,
+          score: calculatedScore,
+          thumbnail_url: result.thumbnailUrl,
+          index_id: indexId,
+        };
       })
     );
 
@@ -104,9 +113,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       pageInfo: {
-        page: data.page_info?.page || 1,
-        total_page: data.page_info?.total_page || 1,
-        total_results: data.page_info?.total_results || filteredResults.length,
+        page: 1,
+        total_page: 1,
+        total_results: filteredResults.length,
       },
       results: filteredResults,
     });

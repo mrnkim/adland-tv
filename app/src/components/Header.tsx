@@ -41,14 +41,6 @@ export default function Header() {
             >
               Analyze
             </Link>
-            <a
-              href="https://adland.tv"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sm font-medium text-gray-600 hover:text-gray-900"
-            >
-              About
-            </a>
           </nav>
 
           {/* TwelveLabs branding */}

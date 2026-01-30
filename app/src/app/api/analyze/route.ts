@@ -10,7 +10,116 @@ const getClient = () => {
   return new TwelveLabs({ apiKey });
 };
 
-const ANALYSIS_PROMPT = `Analyze this advertisement video comprehensively. Provide a detailed breakdown including:
+// Section-specific prompts and schemas
+const SECTION_CONFIG: Record<string, { prompt: string; schema: object }> = {
+  scenes: {
+    prompt: 'Analyze every distinct scene in this video. For each scene, provide the timestamp range, a description, and the key visual elements present.',
+    schema: {
+      type: 'object',
+      properties: {
+        scenes: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              timestamp: { type: 'string' },
+              description: { type: 'string' },
+              visual_elements: { type: 'array', items: { type: 'string' } },
+            },
+          },
+        },
+      },
+    },
+  },
+  key_moments: {
+    prompt: 'Identify the key moments in this video — emotional peaks, reveals, surprising transitions, or any standout points. For each, give a timestamp, a short label, and why it matters.',
+    schema: {
+      type: 'object',
+      properties: {
+        key_moments: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              timestamp: { type: 'string' },
+              label: { type: 'string' },
+              significance: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  },
+  audio_mood: {
+    prompt: 'Analyze the audio and mood of this video. Describe the overall emotional mood, the music genre/style, any voiceover narration, and notable sound effects.',
+    schema: {
+      type: 'object',
+      properties: {
+        audio_mood: {
+          type: 'object',
+          properties: {
+            overall_mood: { type: 'string' },
+            music_style: { type: 'string' },
+            voiceover: { type: 'string' },
+            sound_effects: { type: 'array', items: { type: 'string' } },
+          },
+        },
+      },
+    },
+  },
+  text_extraction: {
+    prompt: 'Extract all text from this video: any text visible on screen (titles, captions, logos, URLs) and any spoken dialogue or narration.',
+    schema: {
+      type: 'object',
+      properties: {
+        text_extraction: {
+          type: 'object',
+          properties: {
+            on_screen_text: { type: 'array', items: { type: 'string' } },
+            spoken_text: { type: 'string' },
+          },
+        },
+      },
+    },
+  },
+  brand_timeline: {
+    prompt: 'Identify every brand appearance in this video with timestamps. Note whether it appears as a logo, product placement, or verbal mention, and describe how it appears.',
+    schema: {
+      type: 'object',
+      properties: {
+        brand_timeline: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              timestamp: { type: 'string' },
+              type: { type: 'string' },
+              description: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  },
+  color_palette: {
+    prompt: 'Analyze the color palette of this video. Identify the 5 most dominant colors as hex codes and describe the overall color tone (warm, cool, neutral, vibrant, or muted).',
+    schema: {
+      type: 'object',
+      properties: {
+        color_palette: {
+          type: 'object',
+          properties: {
+            dominant_colors: { type: 'array', items: { type: 'string' } },
+            overall_tone: { type: 'string' },
+          },
+        },
+      },
+    },
+  },
+};
+
+// Full analysis prompt and schema
+const ALL_PROMPT = `Analyze this advertisement video comprehensively. Provide a detailed breakdown including:
 1. Every distinct scene with timestamps, descriptions, and visual elements
 2. Key moments that stand out (emotional peaks, reveals, transitions)
 3. Audio mood analysis (overall mood, music style, voiceover description, sound effects)
@@ -21,130 +130,78 @@ const ANALYSIS_PROMPT = `Analyze this advertisement video comprehensively. Provi
 
 Be thorough and precise with timestamps.`;
 
-const RESPONSE_SCHEMA = {
+const ALL_SCHEMA = {
   type: 'object' as const,
   properties: {
-    scenes: {
-      type: 'array' as const,
-      items: {
-        type: 'object' as const,
-        properties: {
-          timestamp: { type: 'string' as const },
-          description: { type: 'string' as const },
-          visual_elements: { type: 'array' as const, items: { type: 'string' as const } },
-        },
-      },
-    },
-    key_moments: {
-      type: 'array' as const,
-      items: {
-        type: 'object' as const,
-        properties: {
-          timestamp: { type: 'string' as const },
-          label: { type: 'string' as const },
-          significance: { type: 'string' as const },
-        },
-      },
-    },
-    audio_mood: {
-      type: 'object' as const,
-      properties: {
-        overall_mood: { type: 'string' as const },
-        music_style: { type: 'string' as const },
-        voiceover: { type: 'string' as const },
-        sound_effects: { type: 'array' as const, items: { type: 'string' as const } },
-      },
-    },
-    text_extraction: {
-      type: 'object' as const,
-      properties: {
-        on_screen_text: { type: 'array' as const, items: { type: 'string' as const } },
-        spoken_text: { type: 'string' as const },
-      },
-    },
-    brand_timeline: {
-      type: 'array' as const,
-      items: {
-        type: 'object' as const,
-        properties: {
-          timestamp: { type: 'string' as const },
-          type: { type: 'string' as const },
-          description: { type: 'string' as const },
-        },
-      },
-    },
-    color_palette: {
-      type: 'object' as const,
-      properties: {
-        dominant_colors: { type: 'array' as const, items: { type: 'string' as const } },
-        overall_tone: { type: 'string' as const },
-      },
-    },
+    scenes: (SECTION_CONFIG.scenes.schema as any).properties.scenes,
+    key_moments: (SECTION_CONFIG.key_moments.schema as any).properties.key_moments,
+    audio_mood: (SECTION_CONFIG.audio_mood.schema as any).properties.audio_mood,
+    text_extraction: (SECTION_CONFIG.text_extraction.schema as any).properties.text_extraction,
+    brand_timeline: (SECTION_CONFIG.brand_timeline.schema as any).properties.brand_timeline,
+    color_palette: (SECTION_CONFIG.color_palette.schema as any).properties.color_palette,
     summary: { type: 'string' as const },
   },
 };
+
+function parseResult(result: unknown): Record<string, unknown> {
+  try {
+    const text = typeof result === 'string'
+      ? result
+      : (result as any).data || (result as any).text || String(result);
+    const cleanText = String(text)
+      .replace(/```json\n?/g, '')
+      .replace(/```\n?/g, '')
+      .trim();
+    return JSON.parse(cleanText);
+  } catch {
+    const rawText = typeof result === 'string'
+      ? result
+      : (result as any).data || (result as any).text || String(result);
+    return { summary: String(rawText) };
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
     const apiKey = process.env.TWELVELABS_API_KEY;
     if (!apiKey) {
-      return NextResponse.json(
-        { error: 'API key is not configured' },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: 'API key is not configured' }, { status: 500 });
     }
 
     const body = await request.json();
-    const { videoId } = body;
+    const { videoId, section } = body;
 
     if (!videoId) {
-      return NextResponse.json(
-        { error: 'videoId is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'videoId is required' }, { status: 400 });
     }
 
     const client = getClient();
 
+    let prompt: string;
+    let schema: Record<string, unknown>;
+
+    if (section && section !== 'all' && SECTION_CONFIG[section]) {
+      prompt = SECTION_CONFIG[section].prompt;
+      schema = SECTION_CONFIG[section].schema as Record<string, unknown>;
+    } else {
+      prompt = ALL_PROMPT;
+      schema = ALL_SCHEMA as Record<string, unknown>;
+    }
+
     const result = await client.analyze({
       videoId,
-      prompt: ANALYSIS_PROMPT,
+      prompt,
       responseFormat: {
         type: 'json_schema',
-        jsonSchema: RESPONSE_SCHEMA,
+        jsonSchema: schema,
       },
     });
 
-    // Parse the structured JSON response
-    let analysis;
-    try {
-      // The SDK returns the result with a data property or as text
-      const text = typeof result === 'string'
-        ? result
-        : (result as any).data || (result as any).text || String(result);
-      const cleanText = String(text)
-        .replace(/```json\n?/g, '')
-        .replace(/```\n?/g, '')
-        .trim();
-      analysis = JSON.parse(cleanText);
-    } catch {
-      // Fallback: wrap raw text as summary
-      const rawText = typeof result === 'string'
-        ? result
-        : (result as any).data || (result as any).text || String(result);
-      analysis = {
-        summary: String(rawText),
-        scenes: [],
-        key_moments: [],
-        audio_mood: { overall_mood: '', music_style: '', voiceover: '', sound_effects: [] },
-        text_extraction: { on_screen_text: [], spoken_text: '' },
-        brand_timeline: [],
-        color_palette: { dominant_colors: [], overall_tone: '' },
-      };
-    }
+    const analysis = parseResult(result);
 
     return NextResponse.json({
       videoId,
+      section: section || 'all',
       analysis,
       analyzedAt: new Date().toISOString(),
     });

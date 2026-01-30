@@ -253,7 +253,7 @@ export default function AnalyzePage() {
             {/* Right: Analysis Panel */}
             <div className="bg-white rounded-xl border border-gray-200 p-6 lg:max-h-[calc(100vh-16rem)] lg:overflow-y-auto">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">AI Analysis</h3>
-              <AnalysisPanel videoId={selectedVideo._id} autoFetch={true} />
+              <AnalysisPanel videoId={selectedVideo._id} />
             </div>
           </div>
         )}

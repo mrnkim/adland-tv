@@ -113,6 +113,7 @@ export default function BrowsePage() {
       <VideoModal
         isOpen={!!selectedVideo}
         onClose={() => setSelectedVideo(null)}
+        videoId={selectedVideo?._id}
         videoUrl={selectedVideo?.hls?.video_url}
         title={selectedVideo?.user_metadata?.title || selectedVideo?.system_metadata?.video_title}
         metadata={selectedVideo?.user_metadata}

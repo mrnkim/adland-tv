@@ -110,3 +110,43 @@ export interface Category {
     value: string;
   };
 }
+
+// AI Analysis types (PRD 3.4.1)
+export interface AnalysisScene {
+  timestamp: string;
+  description: string;
+  visual_elements: string[];
+}
+
+export interface AnalysisKeyMoment {
+  timestamp: string;
+  label: string;
+  significance: string;
+}
+
+export interface AnalysisBrandAppearance {
+  timestamp: string;
+  type: string;
+  description: string;
+}
+
+export interface VideoAnalysis {
+  scenes: AnalysisScene[];
+  key_moments: AnalysisKeyMoment[];
+  audio_mood: {
+    overall_mood: string;
+    music_style: string;
+    voiceover: string;
+    sound_effects: string[];
+  };
+  text_extraction: {
+    on_screen_text: string[];
+    spoken_text: string;
+  };
+  brand_timeline: AnalysisBrandAppearance[];
+  color_palette: {
+    dominant_colors: string[];
+    overall_tone: string;
+  };
+  summary: string;
+}

@@ -481,6 +481,7 @@ function SearchPageContent() {
       <VideoModal
         isOpen={!!selectedVideo}
         onClose={() => setSelectedVideo(null)}
+        videoId={selectedVideo ? (isSearchResult(selectedVideo) ? selectedVideo.video_id : selectedVideo._id) : undefined}
         videoUrl={getVideoUrl(selectedVideo)}
         title={getVideoTitle(selectedVideo)}
         metadata={getVideoMetadata(selectedVideo)}

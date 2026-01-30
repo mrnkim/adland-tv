@@ -35,6 +35,12 @@ export default function Header() {
             >
               Browse
             </Link>
+            <Link
+              href="/analyze"
+              className={`text-sm font-medium ${pathname === '/analyze' ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+            >
+              Analyze
+            </Link>
             <a
               href="https://adland.tv"
               target="_blank"

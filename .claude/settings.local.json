@@ -29,7 +29,8 @@
       "Bash(xargs kill:*)",
       "Bash(npx tsc:*)",
       "WebSearch",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(grep:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

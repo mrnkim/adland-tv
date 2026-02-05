@@ -239,6 +239,15 @@ function SearchPageContent() {
     setSelectedVideo(video);
   };
 
+  const handleViewFullVideo = () => {
+    if (!selectedVideo) return;
+    const videoId = isSearchResult(selectedVideo) ? selectedVideo.video_id : selectedVideo._id;
+    onClose();
+    router.push(`/browse?videoId=${encodeURIComponent(videoId)}`);
+  };
+
+  const onClose = () => setSelectedVideo(null);
+
   // Type guard to check if video is SearchResult
   const isSearchResult = (video: SearchResult | VideoData): video is SearchResult => {
     return 'video_id' in video;
@@ -272,6 +281,17 @@ function SearchPageContent() {
   const getClipEndTime = (video: SearchResult | VideoData | null) => {
     if (!video || !isSearchResult(video)) return undefined;
     return video.end;
+  };
+
+  const getClipScore = (video: SearchResult | VideoData | null) => {
+    if (!video || !isSearchResult(video)) return undefined;
+    return video.score;
+  };
+
+  // Clip variant for search/image results, full for browse/collection
+  const getModalVariant = (video: SearchResult | VideoData | null): 'clip' | 'full' => {
+    if (!video) return 'full';
+    return isSearchResult(video) ? 'clip' : 'full';
   };
 
   // Get results based on current mode
@@ -484,13 +504,16 @@ function SearchPageContent() {
       {/* Video Modal */}
       <VideoModal
         isOpen={!!selectedVideo}
-        onClose={() => setSelectedVideo(null)}
+        onClose={onClose}
         videoId={selectedVideo ? (isSearchResult(selectedVideo) ? selectedVideo.video_id : selectedVideo._id) : undefined}
         videoUrl={getVideoUrl(selectedVideo)}
         title={getVideoTitle(selectedVideo)}
         metadata={getVideoMetadata(selectedVideo)}
         startTime={getClipStartTime(selectedVideo)}
         endTime={getClipEndTime(selectedVideo)}
+        variant={getModalVariant(selectedVideo)}
+        score={getClipScore(selectedVideo)}
+        onViewFullVideo={getModalVariant(selectedVideo) === 'clip' ? handleViewFullVideo : undefined}
       />
     </div>
   );

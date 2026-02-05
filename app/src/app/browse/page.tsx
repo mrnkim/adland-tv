@@ -1,13 +1,19 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import VideoCard from '@/components/VideoCard';
 import VideoModal from '@/components/VideoModal';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { VideoData } from '@/types';
 
-export default function BrowsePage() {
+function BrowsePageContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const autoOpenVideoId = searchParams.get('videoId');
+  const autoOpenHandled = useRef(false);
+
   const [selectedVideo, setSelectedVideo] = useState<VideoData | null>(null);
 
   const { data, isLoading, error } = useQuery({
@@ -22,7 +28,20 @@ export default function BrowsePage() {
     },
   });
 
-  const videos = data?.videos || [];
+  const videos: VideoData[] = data?.videos || [];
+
+  // Auto-open video from ?videoId= query param (e.g. from search "View Full Video")
+  useEffect(() => {
+    if (autoOpenVideoId && videos.length > 0 && !autoOpenHandled.current) {
+      const video = videos.find((v: VideoData) => v._id === autoOpenVideoId);
+      if (video) {
+        setSelectedVideo(video);
+        autoOpenHandled.current = true;
+        // Clean URL so closing doesn't re-trigger
+        router.replace('/browse', { scroll: false });
+      }
+    }
+  }, [autoOpenVideoId, videos, router]);
 
   // Group videos by collection
   const groupedVideos = videos.reduce((acc: Record<string, VideoData[]>, video: VideoData) => {
@@ -119,5 +138,17 @@ export default function BrowsePage() {
         metadata={selectedVideo?.user_metadata}
       />
     </div>
+  );
+}
+
+export default function BrowsePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <LoadingSpinner size="lg" />
+      </div>
+    }>
+      <BrowsePageContent />
+    </Suspense>
   );
 }

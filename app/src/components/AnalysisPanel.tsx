@@ -7,6 +7,18 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 interface AnalysisPanelProps {
   videoId: string;
   autoFetch?: boolean;
+  onSeek?: (seconds: number) => void;
+}
+
+// Parse timestamp string like "0:05", "1:30", "00:05-00:15" to seconds
+function parseTimestamp(ts: string): number | null {
+  // Take only the start time if it's a range (e.g. "0:05-0:15")
+  const start = ts.split('-')[0].trim();
+  const parts = start.split(':').map(Number);
+  if (parts.some(isNaN)) return null;
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return null;
 }
 
 type SectionKey = 'scenes' | 'key_moments' | 'audio_mood' | 'text_extraction' | 'brand_timeline' | 'color_palette';
@@ -28,7 +40,7 @@ const SECTIONS: SectionDef[] = [
   { key: 'color_palette', label: 'Color Palette', icon: 'M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01', color: 'text-pink-600', bgColor: 'bg-pink-50' },
 ];
 
-export default function AnalysisPanel({ videoId, autoFetch = false }: AnalysisPanelProps) {
+export default function AnalysisPanel({ videoId, autoFetch = false, onSeek }: AnalysisPanelProps) {
   // Per-section data, loading, and error state
   const [sectionData, setSectionData] = useState<Partial<VideoAnalysis>>({});
   const [loadingSections, setLoadingSections] = useState<Set<string>>(new Set());
@@ -172,6 +184,7 @@ export default function AnalysisPanel({ videoId, autoFetch = false }: AnalysisPa
           isLoaded={isSectionLoaded(s.key)}
           error={errorSections[s.key]}
           onRun={() => fetchSection(s.key)}
+          onSeek={onSeek}
         />
       ))}
 
@@ -194,6 +207,7 @@ function SectionCard({
   isLoaded,
   error,
   onRun,
+  onSeek,
 }: {
   section: SectionDef;
   data: Partial<VideoAnalysis>;
@@ -201,6 +215,7 @@ function SectionCard({
   isLoaded: boolean;
   error?: string;
   onRun: () => void;
+  onSeek?: (seconds: number) => void;
 }) {
   return (
     <section className="border border-gray-200 rounded-xl overflow-hidden">
@@ -253,7 +268,7 @@ function SectionCard({
           <p className="text-xs text-gray-400 py-2">Click &ldquo;Run&rdquo; to analyze this section</p>
         )}
 
-        {isLoaded && !isLoading && <SectionContent sectionKey={section.key} data={data} />}
+        {isLoaded && !isLoading && <SectionContent sectionKey={section.key} data={data} onSeek={onSeek} />}
       </div>
     </section>
   );
@@ -261,25 +276,46 @@ function SectionCard({
 
 // --- Section Content Renderers ---
 
-function SectionContent({ sectionKey, data }: { sectionKey: SectionKey; data: Partial<VideoAnalysis> }) {
+function SectionContent({ sectionKey, data, onSeek }: { sectionKey: SectionKey; data: Partial<VideoAnalysis>; onSeek?: (seconds: number) => void }) {
   switch (sectionKey) {
-    case 'scenes': return <ScenesContent scenes={data.scenes} />;
-    case 'key_moments': return <KeyMomentsContent moments={data.key_moments} />;
+    case 'scenes': return <ScenesContent scenes={data.scenes} onSeek={onSeek} />;
+    case 'key_moments': return <KeyMomentsContent moments={data.key_moments} onSeek={onSeek} />;
     case 'audio_mood': return <AudioMoodContent mood={data.audio_mood} />;
     case 'text_extraction': return <TextExtractionContent extraction={data.text_extraction} />;
-    case 'brand_timeline': return <BrandTimelineContent timeline={data.brand_timeline} />;
+    case 'brand_timeline': return <BrandTimelineContent timeline={data.brand_timeline} onSeek={onSeek} />;
     case 'color_palette': return <ColorPaletteContent palette={data.color_palette} />;
     default: return null;
   }
 }
 
-function ScenesContent({ scenes }: { scenes?: VideoAnalysis['scenes'] }) {
+function TimestampBadge({ timestamp, className, onSeek }: { timestamp: string; className: string; onSeek?: (seconds: number) => void }) {
+  const seconds = parseTimestamp(timestamp);
+  const isClickable = onSeek && seconds !== null;
+
+  return (
+    <button
+      type="button"
+      onClick={() => isClickable && onSeek(seconds)}
+      className={`${className} ${isClickable ? 'cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-current transition-all' : 'cursor-default'}`}
+      title={isClickable ? `Jump to ${timestamp}` : undefined}
+    >
+      {isClickable && (
+        <svg className="w-3 h-3 inline-block mr-0.5 -mt-px" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M8 5v14l11-7z" />
+        </svg>
+      )}
+      {timestamp}
+    </button>
+  );
+}
+
+function ScenesContent({ scenes, onSeek }: { scenes?: VideoAnalysis['scenes']; onSeek?: (seconds: number) => void }) {
   if (!scenes?.length) return <p className="text-xs text-gray-400">No scenes detected</p>;
   return (
     <div className="space-y-3">
       {scenes.map((scene, i) => (
         <div key={i} className="bg-gray-50 rounded-lg p-3">
-          <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">{scene.timestamp}</span>
+          <TimestampBadge timestamp={scene.timestamp} className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium" onSeek={onSeek} />
           <p className="text-sm text-gray-700 mt-1.5">{scene.description}</p>
           {scene.visual_elements?.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-2">
@@ -294,13 +330,13 @@ function ScenesContent({ scenes }: { scenes?: VideoAnalysis['scenes'] }) {
   );
 }
 
-function KeyMomentsContent({ moments }: { moments?: VideoAnalysis['key_moments'] }) {
+function KeyMomentsContent({ moments, onSeek }: { moments?: VideoAnalysis['key_moments']; onSeek?: (seconds: number) => void }) {
   if (!moments?.length) return <p className="text-xs text-gray-400">No key moments detected</p>;
   return (
     <div className="space-y-2">
       {moments.map((m, i) => (
         <div key={i} className="flex items-start gap-3 p-2">
-          <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium flex-shrink-0 mt-0.5">{m.timestamp}</span>
+          <TimestampBadge timestamp={m.timestamp} className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium flex-shrink-0 mt-0.5" onSeek={onSeek} />
           <div>
             <p className="text-sm font-medium text-gray-900">{m.label}</p>
             <p className="text-xs text-gray-500">{m.significance}</p>
@@ -373,13 +409,13 @@ function TextExtractionContent({ extraction }: { extraction?: VideoAnalysis['tex
   );
 }
 
-function BrandTimelineContent({ timeline }: { timeline?: VideoAnalysis['brand_timeline'] }) {
+function BrandTimelineContent({ timeline, onSeek }: { timeline?: VideoAnalysis['brand_timeline']; onSeek?: (seconds: number) => void }) {
   if (!timeline?.length) return <p className="text-xs text-gray-400">No brand appearances detected</p>;
   return (
     <div className="space-y-2">
       {timeline.map((item, i) => (
         <div key={i} className="flex items-start gap-3 p-2">
-          <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium flex-shrink-0 mt-0.5">{item.timestamp}</span>
+          <TimestampBadge timestamp={item.timestamp} className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium flex-shrink-0 mt-0.5" onSeek={onSeek} />
           <div className="flex items-center gap-2">
             <span className="text-xs bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded font-medium uppercase">{item.type}</span>
             <p className="text-sm text-gray-700">{item.description}</p>

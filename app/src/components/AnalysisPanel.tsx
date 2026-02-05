@@ -11,14 +11,35 @@ interface AnalysisPanelProps {
   onSeek?: (seconds: number) => void;
 }
 
-// Parse timestamp string like "0:05", "1:30", "00:05-00:15" to seconds
+// Parse timestamp string to seconds. Handles formats:
+// "0:05", "1:30", "00:05-00:15", "0s (00:00) - 4s (00:04)", "4s", "30s"
 function parseTimestamp(ts: string): number | null {
-  // Take only the start time if it's a range (e.g. "0:05-0:15")
-  const start = ts.split('-')[0].trim();
+  // Take only the start portion if it's a range
+  const start = ts.split(/\s*-\s/)[0].trim();
+
+  // Try mm:ss or hh:mm:ss inside parentheses, e.g. "(00:04)"
+  const parenMatch = start.match(/\((\d+:\d+(?::\d+)?)\)/);
+  if (parenMatch) {
+    const parts = parenMatch[1].split(':').map(Number);
+    if (!parts.some(isNaN)) {
+      if (parts.length === 2) return parts[0] * 60 + parts[1];
+      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    }
+  }
+
+  // Try "Xs" format, e.g. "0s", "4s", "30s"
+  const secMatch = start.match(/^(\d+(?:\.\d+)?)s\b/);
+  if (secMatch) {
+    return parseFloat(secMatch[1]);
+  }
+
+  // Try plain mm:ss or hh:mm:ss
   const parts = start.split(':').map(Number);
-  if (parts.some(isNaN)) return null;
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (!parts.some(isNaN)) {
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  }
+
   return null;
 }
 

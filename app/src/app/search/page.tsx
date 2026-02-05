@@ -19,7 +19,7 @@ function SearchPageContent() {
   const initialCollection = searchParams.get('collection') || '';
 
   const [searchQuery, setSearchQuery] = useState(initialQuery);
-  const [submittedQuery, setSubmittedQuery] = useState(initialQuery || initialCategory);
+  const [submittedQuery, setSubmittedQuery] = useState(initialQuery);
   const [browseCategory, setBrowseCategory] = useState(initialCategory);
   const [activeFilters, setActiveFilters] = useState<ActiveFilters>({});
   const [selectedVideo, setSelectedVideo] = useState<SearchResult | VideoData | null>(null);
@@ -347,9 +347,11 @@ function SearchPageContent() {
                             ? `videos in "${displayTitle}"`
                             : isSearchMode
                               ? `results for "${displayTitle}"`
-                              : Object.keys(activeFilters).length > 0
-                                ? 'filtered videos'
-                                : 'videos'
+                              : browseCategory
+                                ? `ads in "${browseCategory}"`
+                                : Object.keys(activeFilters).length > 0
+                                  ? 'filtered videos'
+                                  : 'videos'
                       }
                     </>
                   )}

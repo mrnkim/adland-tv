@@ -138,7 +138,7 @@ export default function VideoModal({
         </div>
 
         {/* Video Player */}
-        <div className="relative aspect-video bg-black">
+        <div className="relative bg-black" style={{ height: '45vh', minHeight: '240px' }}>
           {videoUrl ? (
             <HlsPlayer
               ref={videoRef}
@@ -178,7 +178,7 @@ export default function VideoModal({
         </div>
 
         {/* Tab Content */}
-        <div className="p-4 overflow-y-auto">
+        <div className="p-4 overflow-y-auto flex-1">
           {activeTab === 'overview' ? (
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

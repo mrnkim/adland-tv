@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { VideoAnalysis } from '@/types';
 import LoadingSpinner from '@/components/LoadingSpinner';
 
@@ -40,73 +41,96 @@ const SECTIONS: SectionDef[] = [
   { key: 'color_palette', label: 'Color Palette', icon: 'M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01', color: 'text-pink-600', bgColor: 'bg-pink-50' },
 ];
 
+const ANALYSIS_CACHE_TIME = 30 * 60 * 1000; // 30 minutes
+
+async function fetchAnalysisFromAPI(videoId: string, section: SectionKey | 'all'): Promise<Record<string, unknown>> {
+  const response = await fetch('/api/analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ videoId, section }),
+  });
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error || 'Analysis failed');
+  }
+  const data = await response.json();
+  return data.analysis;
+}
+
 export default function AnalysisPanel({ videoId, autoFetch = false, onSeek }: AnalysisPanelProps) {
-  // Per-section data, loading, and error state
-  const [sectionData, setSectionData] = useState<Partial<VideoAnalysis>>({});
-  const [loadingSections, setLoadingSections] = useState<Set<string>>(new Set());
-  const [errorSections, setErrorSections] = useState<Record<string, string>>({});
-  const [summary, setSummary] = useState<string | null>(null);
-  const [started, setStarted] = useState(autoFetch);
+  const queryClient = useQueryClient();
 
-  const fetchSection = useCallback(async (section: SectionKey | 'all') => {
-    const keys = section === 'all' ? SECTIONS.map(s => s.key) : [section];
+  // Reactive cache reads for each section
+  const sectionQueries = useQueries({
+    queries: SECTIONS.map(s => ({
+      queryKey: ['analysis', videoId, s.key] as const,
+      queryFn: async () => {
+        const result = await fetchAnalysisFromAPI(videoId, s.key);
+        return result[s.key];
+      },
+      enabled: false,
+      staleTime: Infinity,
+      gcTime: ANALYSIS_CACHE_TIME,
+      retry: false,
+    })),
+  });
 
-    setLoadingSections(prev => {
-      const next = new Set(prev);
-      keys.forEach(k => next.add(k));
-      return next;
-    });
-    // Clear errors for sections being fetched
-    setErrorSections(prev => {
-      const next = { ...prev };
-      keys.forEach(k => delete next[k]);
-      return next;
-    });
+  // Summary reactive cache
+  const { data: summary } = useQuery<string>({
+    queryKey: ['analysis', videoId, 'summary'],
+    queryFn: () => null as never,
+    enabled: false,
+    staleTime: Infinity,
+    gcTime: ANALYSIS_CACHE_TIME,
+  });
 
-    try {
-      const response = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoId, section }),
-      });
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Analysis failed');
+  const hasCachedData = sectionQueries.some(q => q.data !== undefined);
+
+  // Initialize started from cache or autoFetch
+  const [started, setStarted] = useState(() => {
+    if (autoFetch) return true;
+    return SECTIONS.some(s =>
+      queryClient.getQueryData(['analysis', videoId, s.key]) !== undefined
+    );
+  });
+
+  // "Analyze All" mutation — splits results into per-section cache
+  const analyzeAll = useMutation({
+    mutationFn: () => fetchAnalysisFromAPI(videoId, 'all'),
+    onSuccess: (result) => {
+      for (const s of SECTIONS) {
+        if (result[s.key] !== undefined) {
+          queryClient.setQueryData(['analysis', videoId, s.key], result[s.key]);
+        }
       }
-      const data = await response.json();
-      const analysis = data.analysis;
-
-      setSectionData(prev => ({ ...prev, ...analysis }));
-      if (analysis.summary) {
-        setSummary(analysis.summary);
+      if (result.summary) {
+        queryClient.setQueryData(['analysis', videoId, 'summary'], result.summary as string);
       }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Analysis failed';
-      setErrorSections(prev => {
-        const next = { ...prev };
-        keys.forEach(k => { next[k] = msg; });
-        return next;
-      });
-    } finally {
-      setLoadingSections(prev => {
-        const next = new Set(prev);
-        keys.forEach(k => next.delete(k));
-        return next;
-      });
+    },
+  });
+
+  const handleRunSection = useCallback((key: SectionKey) => {
+    const index = SECTIONS.findIndex(s => s.key === key);
+    if (index >= 0) {
+      sectionQueries[index].refetch();
     }
-  }, [videoId]);
+  }, [sectionQueries]);
 
-  // Auto-fetch all on mount if autoFetch
+  const handleAnalyzeAll = useCallback(() => {
+    setStarted(true);
+    analyzeAll.mutate();
+  }, [analyzeAll]);
+
+  // Auto-fetch all on mount if autoFetch and no cached data
   const [autoFetched, setAutoFetched] = useState(false);
   if (autoFetch && !autoFetched) {
     setAutoFetched(true);
-    setStarted(true);
-    fetchSection('all');
+    if (!hasCachedData) {
+      analyzeAll.mutate();
+    }
   }
 
-  const isSectionLoaded = (key: SectionKey) => sectionData[key] !== undefined;
-  const isSectionLoading = (key: SectionKey) => loadingSections.has(key);
-  const anyLoading = loadingSections.size > 0;
+  const anyLoading = analyzeAll.isPending || sectionQueries.some(q => q.isFetching);
 
   // Initial state: show section menu
   if (!started) {
@@ -115,8 +139,8 @@ export default function AnalysisPanel({ videoId, autoFetch = false, onSeek }: An
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-900">AI Analysis</h3>
           <button
-            onClick={() => { setStarted(true); fetchSection('all'); }}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
+            onClick={handleAnalyzeAll}
+            className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -128,8 +152,8 @@ export default function AnalysisPanel({ videoId, autoFetch = false, onSeek }: An
           {SECTIONS.map(s => (
             <button
               key={s.key}
-              onClick={() => { setStarted(true); fetchSection(s.key); }}
-              className={`flex items-center gap-2.5 p-3 rounded-lg border border-gray-200 hover:border-blue-400 hover:shadow-sm transition-all text-left group`}
+              onClick={() => { setStarted(true); handleRunSection(s.key); }}
+              className={`cursor-pointer flex items-center gap-2.5 p-3 rounded-lg border border-gray-200 hover:border-blue-400 hover:shadow-sm transition-all text-left group`}
             >
               <div className={`w-8 h-8 ${s.bgColor} rounded-lg flex items-center justify-center flex-shrink-0`}>
                 <svg className={`w-4 h-4 ${s.color}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -156,9 +180,9 @@ export default function AnalysisPanel({ videoId, autoFetch = false, onSeek }: An
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-gray-900">AI Analysis</h3>
         <button
-          onClick={() => fetchSection('all')}
+          onClick={handleAnalyzeAll}
           disabled={anyLoading}
-          className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-4 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
+          className="cursor-pointer bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-4 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -166,6 +190,13 @@ export default function AnalysisPanel({ videoId, autoFetch = false, onSeek }: An
           {anyLoading ? 'Analyzing...' : 'Analyze All'}
         </button>
       </div>
+
+      {/* Mutation error */}
+      {analyzeAll.isError && (
+        <div className="bg-red-50 border border-red-100 rounded-xl p-4">
+          <p className="text-sm text-red-600">{analyzeAll.error?.message || 'Analysis failed'}</p>
+        </div>
+      )}
 
       {/* Summary */}
       {summary && (
@@ -175,18 +206,25 @@ export default function AnalysisPanel({ videoId, autoFetch = false, onSeek }: An
       )}
 
       {/* Section Cards */}
-      {SECTIONS.map(s => (
-        <SectionCard
-          key={s.key}
-          section={s}
-          data={sectionData}
-          isLoading={isSectionLoading(s.key)}
-          isLoaded={isSectionLoaded(s.key)}
-          error={errorSections[s.key]}
-          onRun={() => fetchSection(s.key)}
-          onSeek={onSeek}
-        />
-      ))}
+      {SECTIONS.map((s, i) => {
+        const q = sectionQueries[i];
+        const isLoading = q.isFetching || (analyzeAll.isPending && q.data === undefined);
+        const isLoaded = q.data !== undefined;
+        const error = q.error?.message;
+
+        return (
+          <SectionCard
+            key={s.key}
+            section={s}
+            data={q.data}
+            isLoading={isLoading}
+            isLoaded={isLoaded}
+            error={error}
+            onRun={() => handleRunSection(s.key)}
+            onSeek={onSeek}
+          />
+        );
+      })}
 
       {/* Attribution */}
       <div className="pt-4 border-t border-gray-200">
@@ -210,7 +248,7 @@ function SectionCard({
   onSeek,
 }: {
   section: SectionDef;
-  data: Partial<VideoAnalysis>;
+  data: unknown;
   isLoading: boolean;
   isLoaded: boolean;
   error?: string;
@@ -230,7 +268,7 @@ function SectionCard({
         {!isLoaded && !isLoading && !error && (
           <button
             onClick={onRun}
-            className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1 transition-colors"
+            className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1 transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -257,10 +295,10 @@ function SectionCard({
           </div>
         )}
 
-        {error && (
+        {error && !isLoading && (
           <div className="text-center py-3">
             <p className="text-sm text-red-600">{error}</p>
-            <button onClick={onRun} className="text-xs text-red-600 underline mt-1">Retry</button>
+            <button onClick={onRun} className="cursor-pointer text-xs text-red-600 underline mt-1">Retry</button>
           </div>
         )}
 
@@ -276,14 +314,14 @@ function SectionCard({
 
 // --- Section Content Renderers ---
 
-function SectionContent({ sectionKey, data, onSeek }: { sectionKey: SectionKey; data: Partial<VideoAnalysis>; onSeek?: (seconds: number) => void }) {
+function SectionContent({ sectionKey, data, onSeek }: { sectionKey: SectionKey; data: unknown; onSeek?: (seconds: number) => void }) {
   switch (sectionKey) {
-    case 'scenes': return <ScenesContent scenes={data.scenes} onSeek={onSeek} />;
-    case 'key_moments': return <KeyMomentsContent moments={data.key_moments} onSeek={onSeek} />;
-    case 'audio_mood': return <AudioMoodContent mood={data.audio_mood} />;
-    case 'text_extraction': return <TextExtractionContent extraction={data.text_extraction} />;
-    case 'brand_timeline': return <BrandTimelineContent timeline={data.brand_timeline} onSeek={onSeek} />;
-    case 'color_palette': return <ColorPaletteContent palette={data.color_palette} />;
+    case 'scenes': return <ScenesContent scenes={data as VideoAnalysis['scenes']} onSeek={onSeek} />;
+    case 'key_moments': return <KeyMomentsContent moments={data as VideoAnalysis['key_moments']} onSeek={onSeek} />;
+    case 'audio_mood': return <AudioMoodContent mood={data as VideoAnalysis['audio_mood']} />;
+    case 'text_extraction': return <TextExtractionContent extraction={data as VideoAnalysis['text_extraction']} />;
+    case 'brand_timeline': return <BrandTimelineContent timeline={data as VideoAnalysis['brand_timeline']} onSeek={onSeek} />;
+    case 'color_palette': return <ColorPaletteContent palette={data as VideoAnalysis['color_palette']} />;
     default: return null;
   }
 }

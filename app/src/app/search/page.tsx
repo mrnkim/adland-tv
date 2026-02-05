@@ -20,6 +20,7 @@ function SearchPageContent() {
 
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [submittedQuery, setSubmittedQuery] = useState(initialQuery || initialCategory);
+  const [browseCategory, setBrowseCategory] = useState(initialCategory);
   const [activeFilters, setActiveFilters] = useState<ActiveFilters>({});
   const [selectedVideo, setSelectedVideo] = useState<SearchResult | VideoData | null>(null);
   const [showFilters, setShowFilters] = useState(true);
@@ -37,8 +38,8 @@ function SearchPageContent() {
   // Set initial filter from URL
   useEffect(() => {
     if (initialCategory) {
+      setBrowseCategory(initialCategory);
       setActiveFilters({ product_category: [initialCategory] });
-      setSubmittedQuery(initialCategory);
     }
   }, [initialCategory]);
 
@@ -164,6 +165,7 @@ function SearchPageContent() {
     setSubmittedQuery(query);
     setImageSearchMode(false);
     setImageSearchResults(null);
+    setBrowseCategory(''); // exit category mode when searching
     router.push(`/search?q=${encodeURIComponent(query)}`);
   };
 

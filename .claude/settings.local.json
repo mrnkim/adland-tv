@@ -30,7 +30,8 @@
       "Bash(npx tsc:*)",
       "WebSearch",
       "WebFetch(domain:github.com)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(git rebase:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

@@ -1,17 +1,29 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import SearchBar from '@/components/SearchBar';
 
-const CATEGORIES = [
-  { id: 'auto', name: 'Auto', icon: '🚗', filter: 'Auto' },
-  { id: 'food', name: 'Food & Beverage', icon: '🍔', filter: 'Food & Beverage' },
-  { id: 'tech', name: 'Tech', icon: '💻', filter: 'Tech' },
-  { id: 'finance', name: 'Finance', icon: '💰', filter: 'Finance' },
-  { id: 'entertainment', name: 'Entertainment', icon: '🎬', filter: 'Entertainment' },
-  { id: 'sports', name: 'Sports', icon: '⚽', filter: 'Sports' },
-];
+const CATEGORY_ICONS: Record<string, string> = {
+  'Auto': '🚗',
+  'Food & Beverage': '🍔',
+  'Tech': '💻',
+  'Finance': '💰',
+  'Insurance': '🛡️',
+  'Healthcare': '🏥',
+  'Retail': '🛍️',
+  'Entertainment': '🎬',
+  'Sports': '⚽',
+  'Travel': '✈️',
+  'Telecom': '📱',
+  'Beauty': '💄',
+  'Fashion': '👗',
+  'Alcohol': '🍺',
+  'Luxury': '💎',
+  'Education': '📚',
+  'CPG': '🧴',
+  'Other': '📦',
+};
 
 const COLLECTIONS = [
   {
@@ -42,9 +54,47 @@ const SAMPLE_SEARCHES = [
   'nostalgic 90s commercials',
 ];
 
+interface CategoryCount {
+  name: string;
+  icon: string;
+  count: number;
+}
+
 export default function HomePage() {
   const router = useRouter();
   const [hoveredCollection, setHoveredCollection] = useState<string | null>(null);
+  const [categories, setCategories] = useState<CategoryCount[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchCategories() {
+      try {
+        const res = await fetch('/api/videos?pageLimit=50');
+        if (!res.ok) return;
+        const data = await res.json();
+        const counts: Record<string, number> = {};
+        for (const video of data.videos || []) {
+          const cat = video.user_metadata?.product_category;
+          if (cat) {
+            counts[cat] = (counts[cat] || 0) + 1;
+          }
+        }
+        const sorted = Object.entries(counts)
+          .map(([name, count]) => ({
+            name,
+            icon: CATEGORY_ICONS[name] || '📦',
+            count,
+          }))
+          .sort((a, b) => b.count - a.count);
+        setCategories(sorted);
+      } catch {
+        // silently fail
+      } finally {
+        setCategoriesLoading(false);
+      }
+    }
+    fetchCategories();
+  }, []);
 
   const handleSearch = (query: string) => {
     router.push(`/search?q=${encodeURIComponent(query)}`);
@@ -113,27 +163,32 @@ export default function HomePage() {
       </section>
 
       {/* Categories Section */}
-      <section className="py-16 px-4">
-        <div className="max-w-6xl mx-auto">
-          <h2 className="text-2xl font-bold text-gray-900 mb-8">
-            Explore by Category
-          </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
-            {CATEGORIES.map((category) => (
-              <button
-                key={category.id}
-                onClick={() => handleCategoryClick(category.filter)}
-                className="flex flex-col items-center justify-center p-6 bg-white border border-gray-200 rounded-xl hover:border-blue-500 hover:shadow-md transition-all group"
-              >
-                <span className="text-3xl mb-2">{category.icon}</span>
-                <span className="text-sm font-medium text-gray-700 group-hover:text-blue-600">
-                  {category.name}
-                </span>
-              </button>
-            ))}
+      {categories.length > 0 && (
+        <section className="py-16 px-4">
+          <div className="max-w-6xl mx-auto">
+            <h2 className="text-2xl font-bold text-gray-900 mb-8">
+              Explore by Category
+            </h2>
+            <div className="flex flex-wrap justify-center gap-4">
+              {categories.map((category) => (
+                <button
+                  key={category.name}
+                  onClick={() => handleCategoryClick(category.name)}
+                  className="flex flex-col items-center justify-center w-36 p-6 bg-white border border-gray-200 rounded-xl hover:border-blue-500 hover:shadow-md transition-all group"
+                >
+                  <span className="text-3xl mb-2">{category.icon}</span>
+                  <span className="text-sm font-medium text-gray-700 group-hover:text-blue-600">
+                    {category.name}
+                  </span>
+                  <span className="text-xs text-gray-400 mt-1">
+                    {category.count} {category.count === 1 ? 'ad' : 'ads'}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* Featured Collections Section */}
       <section className="py-16 px-4 bg-gray-50">

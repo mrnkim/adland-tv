@@ -19,9 +19,9 @@ interface VideoModalProps {
   videoId?: string;
   title?: string;
   metadata?: UserMetadata;
-  onFindSimilar?: () => void;
   startTime?: number;
   endTime?: number;
+  onFindSimilar?: () => void;
 }
 
 export default function VideoModal({
@@ -31,9 +31,9 @@ export default function VideoModal({
   videoId,
   title,
   metadata,
-  onFindSimilar,
   startTime,
   endTime,
+  onFindSimilar,
 }: VideoModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);

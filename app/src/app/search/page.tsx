@@ -243,7 +243,7 @@ function SearchPageContent() {
     if (!selectedVideo) return;
     const videoId = isSearchResult(selectedVideo) ? selectedVideo.video_id : selectedVideo._id;
     onClose();
-    router.push(`/browse?videoId=${encodeURIComponent(videoId)}`);
+    router.push(`/analyze?videoId=${encodeURIComponent(videoId)}`);
   };
 
   const onClose = () => setSelectedVideo(null);

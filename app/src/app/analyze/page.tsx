@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import VideoCard from '@/components/VideoCard';
 import AnalysisPanel from '@/components/AnalysisPanel';
 import HlsPlayer from '@/components/HlsPlayer';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import { VideoData, FILTER_OPTIONS } from '@/types';
+import { VideoData } from '@/types';
 
 const CATEGORY_ICONS: Record<string, string> = {
   'Auto': 'M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10',
@@ -32,9 +33,39 @@ function getIconPath(category: string): string {
   return CATEGORY_ICONS[category] || CATEGORY_ICONS['Other'];
 }
 
-export default function AnalyzePage() {
+function AnalyzePageContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const autoOpenVideoId = searchParams.get('videoId');
+  const autoOpenHandled = useRef(false);
+
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<VideoData | null>(null);
+
+  // Fetch all videos to compute dynamic category counts
+  const { data: allVideosData, isLoading: categoriesLoading } = useQuery({
+    queryKey: ['analyze-all-videos'],
+    queryFn: async () => {
+      const response = await fetch('/api/videos?pageLimit=50');
+      if (!response.ok) throw new Error('Failed to fetch videos');
+      return response.json();
+    },
+  });
+
+  // Compute categories with counts from fetched videos
+  const dynamicCategories = (() => {
+    const allVideos: VideoData[] = allVideosData?.videos || [];
+    const counts: Record<string, number> = {};
+    for (const video of allVideos) {
+      const cat = video.user_metadata?.product_category;
+      if (cat) {
+        counts[cat] = (counts[cat] || 0) + 1;
+      }
+    }
+    return Object.entries(counts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  })();
 
   // Fetch videos for selected category
   const { data: videosData, isLoading: videosLoading } = useQuery({
@@ -51,6 +82,26 @@ export default function AnalyzePage() {
     },
     enabled: !!selectedCategory,
   });
+
+  // Fetch single video for auto-open from ?videoId= param
+  const { data: autoOpenData } = useQuery({
+    queryKey: ['analyze-auto-open', autoOpenVideoId],
+    queryFn: async () => {
+      const response = await fetch(`/api/videos/${autoOpenVideoId}`);
+      if (!response.ok) throw new Error('Failed to fetch video');
+      return response.json();
+    },
+    enabled: !!autoOpenVideoId && !autoOpenHandled.current,
+  });
+
+  // Auto-open video when data arrives
+  useEffect(() => {
+    if (autoOpenData && autoOpenVideoId && !autoOpenHandled.current) {
+      setSelectedVideo(autoOpenData);
+      autoOpenHandled.current = true;
+      router.replace('/analyze', { scroll: false });
+    }
+  }, [autoOpenData, autoOpenVideoId, router]);
 
   const videos: VideoData[] = videosData?.videos || [];
 
@@ -71,7 +122,7 @@ export default function AnalyzePage() {
             {(selectedCategory || selectedVideo) && (
               <button
                 onClick={handleBack}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                className="cursor-pointer p-2 hover:bg-gray-100 rounded-full transition-colors"
               >
                 <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -101,7 +152,7 @@ export default function AnalyzePage() {
             <nav className="flex items-center gap-2 text-sm text-gray-500 mt-3">
               <button
                 onClick={() => { setSelectedCategory(null); setSelectedVideo(null); }}
-                className="hover:text-blue-600 transition-colors"
+                className="cursor-pointer hover:text-blue-600 transition-colors"
               >
                 Categories
               </button>
@@ -112,7 +163,7 @@ export default function AnalyzePage() {
                   </svg>
                   <button
                     onClick={() => setSelectedVideo(null)}
-                    className={selectedVideo ? 'hover:text-blue-600 transition-colors' : 'text-gray-900 font-medium'}
+                    className={`cursor-pointer ${selectedVideo ? 'hover:text-blue-600 transition-colors' : 'text-gray-900 font-medium'}`}
                   >
                     {selectedCategory}
                   </button>
@@ -135,25 +186,35 @@ export default function AnalyzePage() {
 
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* State 1: Category Grid */}
-        {!selectedCategory && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {FILTER_OPTIONS.product_category.map((category) => (
-              <button
-                key={category}
-                onClick={() => setSelectedCategory(category)}
-                className="flex flex-col items-center justify-center p-6 bg-white border border-gray-200 rounded-xl hover:border-blue-400 hover:shadow-md transition-all group"
-              >
-                <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mb-3 group-hover:bg-blue-100 transition-colors">
-                  <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={getIconPath(category)} />
-                  </svg>
-                </div>
-                <span className="text-sm font-medium text-gray-700 group-hover:text-blue-600 transition-colors text-center">
-                  {category}
-                </span>
-              </button>
-            ))}
-          </div>
+        {!selectedCategory && !selectedVideo && (
+          categoriesLoading ? (
+            <div className="flex flex-col items-center justify-center py-20">
+              <LoadingSpinner size="lg" />
+              <p className="mt-4 text-gray-500">Loading categories...</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {dynamicCategories.map(({ name, count }) => (
+                <button
+                  key={name}
+                  onClick={() => setSelectedCategory(name)}
+                  className="cursor-pointer flex flex-col items-center justify-center p-6 bg-white border border-gray-200 rounded-xl hover:border-blue-400 hover:shadow-md transition-all group"
+                >
+                  <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mb-3 group-hover:bg-blue-100 transition-colors">
+                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={getIconPath(name)} />
+                    </svg>
+                  </div>
+                  <span className="text-sm font-medium text-gray-700 group-hover:text-blue-600 transition-colors text-center">
+                    {name}
+                  </span>
+                  <span className="text-xs text-gray-400 mt-1">
+                    {count} {count === 1 ? 'ad' : 'ads'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )
         )}
 
         {/* State 2: Video Grid */}
@@ -173,7 +234,7 @@ export default function AnalyzePage() {
                 <p className="text-gray-500 mb-4">Try selecting a different category</p>
                 <button
                   onClick={() => setSelectedCategory(null)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                  className="cursor-pointer px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
                 >
                   Back to Categories
                 </button>
@@ -259,5 +320,17 @@ export default function AnalyzePage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function AnalyzePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <LoadingSpinner size="lg" />
+      </div>
+    }>
+      <AnalyzePageContent />
+    </Suspense>
   );
 }

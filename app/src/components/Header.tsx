@@ -30,12 +30,6 @@ export default function Header() {
               Search
             </Link>
             <Link
-              href="/browse"
-              className={`text-sm font-medium ${pathname === '/browse' ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
-            >
-              Browse
-            </Link>
-            <Link
               href="/analyze"
               className={`text-sm font-medium ${pathname === '/analyze' ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
             >

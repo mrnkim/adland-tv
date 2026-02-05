@@ -64,6 +64,7 @@ export default function HomePage() {
   const router = useRouter();
   const [hoveredCollection, setHoveredCollection] = useState<string | null>(null);
   const [categories, setCategories] = useState<CategoryCount[]>([]);
+  const [collectionCounts, setCollectionCounts] = useState<Record<string, number>>({});
   const [categoriesLoading, setCategoriesLoading] = useState(true);
 
   useEffect(() => {
@@ -73,12 +74,18 @@ export default function HomePage() {
         if (!res.ok) return;
         const data = await res.json();
         const counts: Record<string, number> = {};
+        const colCounts: Record<string, number> = {};
         for (const video of data.videos || []) {
           const cat = video.user_metadata?.product_category;
           if (cat) {
             counts[cat] = (counts[cat] || 0) + 1;
           }
+          const col = video.user_metadata?.collection;
+          if (col) {
+            colCounts[col] = (colCounts[col] || 0) + 1;
+          }
         }
+        setCollectionCounts(colCounts);
         const sorted = Object.entries(counts)
           .map(([name, count]) => ({
             name,
@@ -152,7 +159,7 @@ export default function HomePage() {
                 <button
                   key={search}
                   onClick={() => handleSearch(search)}
-                  className="px-4 py-2 bg-white border border-gray-200 rounded-full text-sm text-gray-700 hover:border-blue-500 hover:text-blue-600 transition-colors"
+                  className="cursor-pointer px-4 py-2 bg-white border border-gray-200 rounded-full text-sm text-gray-700 hover:border-blue-500 hover:text-blue-600 transition-colors"
                 >
                   {search}
                 </button>
@@ -174,7 +181,7 @@ export default function HomePage() {
                 <button
                   key={category.name}
                   onClick={() => handleCategoryClick(category.name)}
-                  className="flex flex-col items-center justify-center w-36 p-6 bg-white border border-gray-200 rounded-xl hover:border-blue-500 hover:shadow-md transition-all group"
+                  className="cursor-pointer flex flex-col items-center justify-center w-36 p-6 bg-white border border-gray-200 rounded-xl hover:border-blue-500 hover:shadow-md transition-all group"
                 >
                   <span className="text-3xl mb-2">{category.icon}</span>
                   <span className="text-sm font-medium text-gray-700 group-hover:text-blue-600">
@@ -203,7 +210,7 @@ export default function HomePage() {
                 onClick={() => handleCollectionClick(collection.id)}
                 onMouseEnter={() => setHoveredCollection(collection.id)}
                 onMouseLeave={() => setHoveredCollection(null)}
-                className="relative overflow-hidden rounded-2xl h-48 text-left group"
+                className="cursor-pointer relative overflow-hidden rounded-2xl h-48 text-left group"
               >
                 <div
                   className={`absolute inset-0 bg-gradient-to-br ${collection.gradient} transition-transform duration-300 ${
@@ -214,6 +221,11 @@ export default function HomePage() {
                 <div className="relative h-full p-6 flex flex-col justify-end text-white">
                   <h3 className="text-xl font-bold mb-1">{collection.name}</h3>
                   <p className="text-sm text-white/80">{collection.description}</p>
+                  {collectionCounts[collection.id] !== undefined && (
+                    <p className="text-xs text-white/60 mt-1">
+                      {collectionCounts[collection.id]} {collectionCounts[collection.id] === 1 ? 'ad' : 'ads'}
+                    </p>
+                  )}
                 </div>
               </button>
             ))}
@@ -279,7 +291,7 @@ export default function HomePage() {
               href="https://playground.twelvelabs.io"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 bg-white text-blue-600 px-6 py-3 rounded-lg font-semibold hover:bg-blue-50 transition-colors"
+              className="cursor-pointer inline-flex items-center gap-2 bg-white text-blue-600 px-6 py-3 rounded-lg font-semibold hover:bg-blue-50 transition-colors"
             >
               Try TwelveLabs Free
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

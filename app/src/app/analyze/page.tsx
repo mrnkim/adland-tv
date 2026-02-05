@@ -38,6 +38,7 @@ function AnalyzePageContent() {
   const router = useRouter();
   const autoOpenVideoId = searchParams.get('videoId');
   const autoOpenHandled = useRef(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<VideoData | null>(null);
@@ -261,6 +262,7 @@ function AnalyzePageContent() {
               <div className="bg-black rounded-xl overflow-hidden aspect-video">
                 {selectedVideo.hls?.video_url ? (
                   <HlsPlayer
+                    ref={videoRef}
                     src={selectedVideo.hls.video_url}
                     autoPlay
                     className="w-full h-full object-contain"
@@ -314,7 +316,16 @@ function AnalyzePageContent() {
             {/* Right: Analysis Panel */}
             <div className="bg-white rounded-xl border border-gray-200 p-6 lg:max-h-[calc(100vh-16rem)] lg:overflow-y-auto">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">AI Analysis</h3>
-              <AnalysisPanel videoId={selectedVideo._id} />
+              <AnalysisPanel
+                videoId={selectedVideo._id}
+                onSeek={(seconds) => {
+                  const video = videoRef.current;
+                  if (video) {
+                    video.currentTime = seconds;
+                    video.play().catch(() => {});
+                  }
+                }}
+              />
             </div>
           </div>
         )}

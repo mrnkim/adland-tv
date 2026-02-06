@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery, useInfiniteQuery, useMutation } from '@tanstack/react-query';
 import SearchBar from '@/components/SearchBar';
@@ -26,7 +26,9 @@ function SearchPageContent() {
   const [showFilters, setShowFilters] = useState(true);
   const [imageSearchMode, setImageSearchMode] = useState(false);
   const [imageSearchResults, setImageSearchResults] = useState<SearchResult[] | null>(null);
+  const [imageNextPageToken, setImageNextPageToken] = useState<string | null>(null);
   const [isImageUrlSearching, setIsImageUrlSearching] = useState(false);
+  const [isImageLoadingMore, setIsImageLoadingMore] = useState(false);
 
   // Collection name mapping (must match page.tsx COLLECTIONS)
   const collectionNames: Record<string, string> = {
@@ -87,9 +89,12 @@ function SearchPageContent() {
     data: searchData,
     isLoading: searchLoading,
     error: searchError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
   } = useInfiniteQuery({
     queryKey: ['search', submittedQuery, activeFilters],
-    queryFn: async () => {
+    queryFn: async ({ pageParam }) => {
       if (!submittedQuery) return { results: [], pageInfo: { total_results: 0 } };
 
       const response = await fetch('/api/search', {
@@ -99,6 +104,7 @@ function SearchPageContent() {
           query: submittedQuery,
           filters: activeFilters,
           pageLimit: 50,
+          ...(pageParam ? { pageToken: pageParam } : {}),
         }),
       });
 
@@ -109,8 +115,8 @@ function SearchPageContent() {
 
       return response.json();
     },
-    initialPageParam: undefined,
-    getNextPageParam: () => undefined,
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage: any) => lastPage?.pageInfo?.next_page_token ?? undefined,
     enabled: !!submittedQuery && !initialCollection && !imageSearchMode,
   });
 
@@ -135,6 +141,7 @@ function SearchPageContent() {
     },
     onSuccess: (data) => {
       setImageSearchResults(data.results);
+      setImageNextPageToken(data.pageInfo?.next_page_token ?? null);
     },
   });
 
@@ -149,7 +156,7 @@ function SearchPageContent() {
     : isSearchMode
       ? searchLoading
       : imageSearchMode
-        ? (imageSearchMutation.isPending || isImageUrlSearching)
+        ? (imageSearchMutation.isPending || isImageUrlSearching) && !imageSearchResults
         : browseLoading;
 
   const error = isCollectionMode
@@ -173,13 +180,42 @@ function SearchPageContent() {
     setImageSearchMode(true);
     setSubmittedQuery('');
     setSearchQuery('');
+    setImageSearchResults(null);
+    setImageNextPageToken(null);
     imageSearchMutation.mutate(file);
   };
+
+  const handleImageLoadMore = useCallback(async () => {
+    if (!imageNextPageToken || isImageLoadingMore) return;
+    setIsImageLoadingMore(true);
+    try {
+      const formData = new FormData();
+      formData.append('pageToken', imageNextPageToken);
+      formData.append('pageLimit', '50');
+
+      const response = await fetch('/api/search/image', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setImageSearchResults((prev) => [...(prev || []), ...data.results]);
+        setImageNextPageToken(data.pageInfo?.next_page_token ?? null);
+      }
+    } catch (error) {
+      console.error('Image load more error:', error);
+    } finally {
+      setIsImageLoadingMore(false);
+    }
+  }, [imageNextPageToken, isImageLoadingMore]);
 
   const handleImageUrlSearch = async (url: string) => {
     setImageSearchMode(true);
     setSubmittedQuery('');
     setSearchQuery('');
+    setImageSearchResults(null);
+    setImageNextPageToken(null);
     setIsImageUrlSearching(true);
 
     // Use FormData with imageUrl
@@ -200,9 +236,11 @@ function SearchPageContent() {
 
       const data = await response.json();
       setImageSearchResults(data.results);
+      setImageNextPageToken(data.pageInfo?.next_page_token ?? null);
     } catch (error) {
       console.error('Image URL search error:', error);
       setImageSearchResults([]);
+      setImageNextPageToken(null);
     } finally {
       setIsImageUrlSearching(false);
     }
@@ -237,13 +275,6 @@ function SearchPageContent() {
 
   const handleVideoClick = (video: SearchResult | VideoData) => {
     setSelectedVideo(video);
-  };
-
-  const handleViewFullVideo = () => {
-    if (!selectedVideo) return;
-    const videoId = isSearchResult(selectedVideo) ? selectedVideo.video_id : selectedVideo._id;
-    onClose();
-    router.push(`/analyze?videoId=${encodeURIComponent(videoId)}`);
   };
 
   const onClose = () => setSelectedVideo(null);
@@ -288,6 +319,11 @@ function SearchPageContent() {
     return video.score;
   };
 
+  const getClipTranscription = (video: SearchResult | VideoData | null) => {
+    if (!video || !isSearchResult(video)) return undefined;
+    return video.transcription;
+  };
+
   // Clip variant for search/image results, full for browse/collection
   const getModalVariant = (video: SearchResult | VideoData | null): 'clip' | 'full' => {
     if (!video) return 'full';
@@ -313,6 +349,36 @@ function SearchPageContent() {
       : isSearchMode
         ? (searchData?.pages?.[0]?.pageInfo?.total_results ?? results.length)
         : (browseData?.pageInfo?.total_results ?? results.length);
+
+  const showingCount = results.length;
+
+  // Infinite scroll - Intersection Observer
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const canLoadMore =
+    (isSearchMode && hasNextPage && !isFetchingNextPage) ||
+    (imageSearchMode && !!imageNextPageToken && !isImageLoadingMore);
+
+  const handleIntersect = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      if (!entries[0].isIntersecting) return;
+      if (isSearchMode && hasNextPage && !isFetchingNextPage) {
+        fetchNextPage();
+      } else if (imageSearchMode && imageNextPageToken && !isImageLoadingMore) {
+        handleImageLoadMore();
+      }
+    },
+    [isSearchMode, hasNextPage, isFetchingNextPage, fetchNextPage, imageSearchMode, imageNextPageToken, isImageLoadingMore],
+  );
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(handleIntersect, {
+      rootMargin: '400px',
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [handleIntersect]);
 
   const displayTitle = imageSearchMode
     ? 'image'
@@ -491,8 +557,28 @@ function SearchPageContent() {
               </div>
             )}
 
+            {/* Infinite scroll sentinel */}
+            {!isLoading && results.length > 0 && canLoadMore && (
+              <div ref={sentinelRef} className="mt-8 flex flex-col items-center justify-center py-4">
+                {(isFetchingNextPage || isImageLoadingMore) && (
+                  <>
+                    <LoadingSpinner size="md" />
+                    <p className="mt-2 text-gray-400 text-sm">Loading more results...</p>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Loading more indicator (when sentinel is not rendered but still fetching) */}
+            {(isFetchingNextPage || isImageLoadingMore) && !canLoadMore && (
+              <div className="mt-8 flex flex-col items-center justify-center py-4">
+                <LoadingSpinner size="md" />
+                <p className="mt-2 text-gray-400 text-sm">Loading more results...</p>
+              </div>
+            )}
+
             {/* End of results indicator */}
-            {!isLoading && results.length > 0 && results.length >= totalResults && (
+            {!isLoading && results.length > 0 && !canLoadMore && !isFetchingNextPage && !isImageLoadingMore && (
               <div className="mt-8 text-center text-gray-400 text-sm">
                 Showing all {results.length} results
               </div>
@@ -513,7 +599,7 @@ function SearchPageContent() {
         endTime={getClipEndTime(selectedVideo)}
         variant={getModalVariant(selectedVideo)}
         score={getClipScore(selectedVideo)}
-        onViewFullVideo={getModalVariant(selectedVideo) === 'clip' ? handleViewFullVideo : undefined}
+        transcription={getClipTranscription(selectedVideo)}
       />
     </div>
   );

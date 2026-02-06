@@ -51,12 +51,14 @@ export interface SearchResult {
   video_id: string;
   score: number;
   confidence?: string;
+  rank?: number;
   duration?: number;
   thumbnail_url?: string;
   video_url?: string;
   video_title?: string;
   start?: number;
   end?: number;
+  transcription?: string;
   segments?: Array<{
     start: number;
     end: number;

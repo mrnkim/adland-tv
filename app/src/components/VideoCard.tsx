@@ -16,6 +16,13 @@ function formatDuration(seconds?: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
+function formatTimestamp(seconds?: number): string {
+  if (seconds == null) return '0:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
 export default function VideoCard({ video, onClick, showScore = false }: VideoCardProps) {
   const [imageError, setImageError] = useState(false);
 
@@ -36,8 +43,11 @@ export default function VideoCard({ video, onClick, showScore = false }: VideoCa
     ? video.duration
     : video.system_metadata?.duration;
   const score = isSearchResult ? video.score : undefined;
-  const theme = isSearchResult ? video.metadata?.theme : video.user_metadata?.theme;
-  const emotion = isSearchResult ? video.metadata?.emotion : video.user_metadata?.emotion;
+  const rank = isSearchResult ? video.rank : undefined;
+  const clipStart = isSearchResult ? video.start : undefined;
+  const clipEnd = isSearchResult ? video.end : undefined;
+  const theme = !isSearchResult ? video.user_metadata?.theme : undefined;
+  const emotion = !isSearchResult ? video.user_metadata?.emotion : undefined;
 
   return (
     <div
@@ -68,10 +78,17 @@ export default function VideoCard({ video, onClick, showScore = false }: VideoCa
           </div>
         )}
 
-        {/* Score badge */}
-        {showScore && score !== undefined && (
-          <div className="absolute top-2 right-2 bg-blue-600 text-white text-xs px-2 py-1 rounded font-medium">
-            {Math.round(score * 100)}% match
+        {/* Rank badge */}
+        {showScore && rank != null && (
+          <div className="absolute top-2 right-2 bg-blue-600 text-white text-xs px-2 py-0.5 rounded font-medium">
+            #{rank}
+          </div>
+        )}
+
+        {/* Clip time segment badge */}
+        {showScore && clipStart != null && clipEnd != null && (
+          <div className="absolute top-2 left-2 bg-black/70 text-white text-xs px-2 py-0.5 rounded">
+            {formatTimestamp(clipStart)} - {formatTimestamp(clipEnd)}
           </div>
         )}
 

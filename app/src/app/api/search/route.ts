@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { query, pageLimit = 50, filters = {} } = body;
+    const { query, pageLimit = 50, filters = {}, pageToken } = body;
 
     if (!query || query.trim() === '') {
       return NextResponse.json(
@@ -34,27 +34,36 @@ export async function POST(request: NextRequest) {
 
     const client = getClient();
 
-    // Use SDK for search with automatic pagination
-    // Use only visual search for more relevant results
-    const searchResults = await client.search.query({
-      indexId,
-      queryText: query,
-      searchOptions: ['visual'],
-      adjustConfidenceLevel: 0.7,
-      pageLimit,
-    });
-
-    // Collect all results using async iterator
-    const allResults: any[] = [];
-    for await (const clip of searchResults) {
-      allResults.push(clip);
-      // Limit total results to prevent too many API calls
-      if (allResults.length >= pageLimit) break;
+    // Use create/retrieve for proper pagination support
+    let searchResponse;
+    if (pageToken) {
+      // Fetch a specific page using the page token
+      searchResponse = await client.search.retrieve(pageToken);
+    } else {
+      // Initial search request
+      searchResponse = await client.search.create({
+        indexId,
+        queryText: query,
+        searchOptions: ['visual'],
+        adjustConfidenceLevel: 0.7,
+        pageLimit,
+      });
     }
+
+    const allResults = searchResponse.data || [];
+
+    const totalResults = searchResponse.pageInfo?.totalResults ?? allResults.length;
 
     // Fetch video details for each result using direct API call
     const resultsWithDetails = await Promise.all(
       allResults.map(async (result: any) => {
+        // Use real score from TwelveLabs if available, otherwise derive from rank
+        const score = (result.score != null && result.score > 0)
+          ? result.score
+          : totalResults > 1
+            ? Math.max(0, 1 - (result.rank - 1) / (totalResults - 1))
+            : 1;
+
         try {
           const videoResponse = await fetch(
             `https://api.twelvelabs.io/v1.3/indexes/${indexId}/videos/${result.videoId}`,
@@ -63,14 +72,14 @@ export async function POST(request: NextRequest) {
 
           if (videoResponse.ok) {
             const videoData = await videoResponse.json();
-            // Use rank to calculate a score (rank 1 = 100%, higher ranks = lower %)
-            const calculatedScore = Math.max(0, 1 - (result.rank - 1) * 0.02);
             return {
               rank: result.rank,
               start: result.start,
               end: result.end,
               video_id: result.videoId,
-              score: calculatedScore,
+              score,
+              confidence: result.confidence,
+              transcription: result.transcription,
               thumbnail_url: result.thumbnailUrl,
               index_id: indexId,
               video_url: videoData.hls?.video_url,
@@ -82,13 +91,14 @@ export async function POST(request: NextRequest) {
         } catch (e) {
           console.error('Error fetching video details:', e);
         }
-        const calculatedScore = Math.max(0, 1 - (result.rank - 1) * 0.02);
         return {
           rank: result.rank,
           start: result.start,
           end: result.end,
           video_id: result.videoId,
-          score: calculatedScore,
+          score,
+          confidence: result.confidence,
+          transcription: result.transcription,
           thumbnail_url: result.thumbnailUrl,
           index_id: indexId,
         };
@@ -113,9 +123,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       pageInfo: {
-        page: 1,
-        total_page: 1,
-        total_results: filteredResults.length,
+        total_results: searchResponse.pageInfo?.totalResults ?? filteredResults.length,
+        next_page_token: searchResponse.pageInfo?.nextPageToken ?? null,
+        limit_per_page: searchResponse.pageInfo?.limitPerPage ?? pageLimit,
       },
       results: filteredResults,
     });

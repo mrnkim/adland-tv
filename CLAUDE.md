@@ -179,6 +179,43 @@ Key features from `adlands.tv_PRD.md`:
 - Rate limits: 200 search calls/asset/month, 30 analyze calls/asset/month
 - SDK handles async operations and pagination automatically
 
+## Adland Ingest Agent (`scripts/adland-agent.js`)
+
+Reusable CLI agent for scraping adland.tv tag pages and ingesting videos into TwelveLabs.
+
+### Usage
+```bash
+# Dry run - see what would be processed
+node scripts/adland-agent.js --tag "2026-super-bowl-lx-commercials" --dry-run
+
+# Process with limit
+node scripts/adland-agent.js --tag "2026-super-bowl-lx-commercials" --limit 10
+
+# Resume (auto-skips completed videos)
+node scripts/adland-agent.js --tag "2026-super-bowl-lx-commercials"
+
+# Reset progress and start over
+node scripts/adland-agent.js --tag "2026-super-bowl-lx-commercials" --reset
+```
+
+### How It Works
+1. Fetches `https://adland.tv/rss.xml` and filters items by tag keywords
+2. Deduplicates within RSS (e.g. Pokemon appears twice with different slugs)
+3. Queries TwelveLabs index for existing videos (dedup by `source_url` and `title`)
+4. Checks `.progress/{tag}.json` for previously completed videos (resume support)
+5. For each new video: `yt-dlp ytsearch` → download → upload → analyze → update metadata
+6. Saves progress after every video; generates handoff doc at `.progress/{tag}-handoff.md`
+
+### Progress & Handoff
+- Progress is saved to `.progress/{tag}.json` after each video
+- Handoff document at `.progress/{tag}-handoff.md` shows completed/failed/pending
+- Safe to interrupt (Ctrl+C) and resume later
+- Use `--reset` to clear progress for a tag
+
+### Dependencies
+- `yt-dlp` (install: `brew install yt-dlp`)
+- `twelvelabs-js`, `dotenv` (already in package.json)
+
 ## Resources
 - [adland.tv](https://adland.tv/)
 - https://docs.twelvelabs.io/sdk-reference/node-js

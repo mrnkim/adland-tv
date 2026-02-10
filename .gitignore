@@ -48,3 +48,6 @@ coverage/
 
 # Videos
 downloads/
+
+# Agent progress
+.progress/

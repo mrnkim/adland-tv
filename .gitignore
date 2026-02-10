@@ -49,5 +49,5 @@ coverage/
 # Videos
 downloads/
 
-# Agent progress
-.progress/
+# Agent progress (keep handoff docs, ignore runtime state)
+.progress/*.json

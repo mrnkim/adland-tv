@@ -12,13 +12,17 @@
 - [x] Super Bowl 2026 광고 36개 TwelveLabs 인덱싱 완료 (adland-agent, YouTube 경로)
 - [x] JW Player 구조 분석 완료 (아래 상세)
 - [x] JW Player → TwelveLabs URL 업로드 파이프라인 검증 완료
-- [x] Tecovas 테스트 성공 (JW `tNNiIpzO` → TL `698c3086c4d60db04d92a0f5`)
+- [x] Tecovas 테스트 성공 (JW `tNNiIpzO` → TL `698c34083a5c76b64cd61158`)
+- [x] AI 분석 파이프라인 완성 (brand, theme, emotion, visual_style 등 자동 태깅)
+- [x] 중복 업로드 방지 (dedup check by jw_media_id, --force 옵션)
+- [x] 앱에서 JW Player 재생 지원 (videoUrl.ts 헬퍼, HLS/썸네일 CDN fallback)
+- [x] 프론트엔드 업데이트 (analyze, search, VideoCard → JW Player fallback)
+- [x] UserMetadata 타입에 JW Player 필드 추가
 
 ## What's Next
 - [ ] `medialibrary.html`에서 media ID 일괄 추출 스크립트 작성
 - [ ] JW Player 호스팅 영상 배치 인덱싱 (batch jw-to-tl)
 - [ ] Ari에게 JW Player API key 요청 (content-editor로는 생성 불가)
-- [ ] 앱에서 JW Player 임베드 재생 구현 (jw_media_id 메타데이터 활용)
 - [ ] External video (m.adland.tv) 영상 인덱싱 전략 결정
 
 ## Key Findings (2026-02-11)
@@ -42,23 +46,37 @@ https://cdn.jwplayer.com/v2/media/{mediaId}
 - **Hosted video** (Feb 2026, 4개): JW CDN에 직접 호스팅, HLS+MP4, 실제 duration
 - **External video** (Apr 2025, 213개+): `m.adland.tv` MP4 참조, duration 0
 
-### URL 업로드 파이프라인 (검증 완료)
+### Full Pipeline (4단계, 검증 완료)
 ```
 JW Player Media ID
-  → CDN JSON 조회 (https://cdn.jwplayer.com/v2/media/{id})
-  → MP4 URL 추출 (최고 화질)
-  → TwelveLabs SDK videoUrl 업로드 (다운로드 불필요)
-  → 메타데이터 업데이트 (jw_media_id, jw_player_id 등)
+  → [0] Dedup check (jw_media_id로 기존 영상 확인, --force로 재처리 가능)
+  → [1] CDN JSON 조회 (https://cdn.jwplayer.com/v2/media/{id})
+  → [2] TwelveLabs SDK videoUrl 업로드 (다운로드 불필요)
+  → [3] AI 분석 (brand, theme, emotion, visual_style, sentiment, category, era, celebrities)
+  → [4] 메타데이터 업데이트 (JW 메타 + AI 태그 통합)
 ```
 - 스크립트: `scripts/jw-to-tl-test.js`
-- ~10초 소요 (30초 영상 기준)
+- ~15초 소요 (30초 영상 기준, AI 분석 포함)
+
+### 앱 JW Player 재생 지원
+```
+app/src/lib/videoUrl.ts
+  → getVideoUrl(): TL HLS > JW Player HLS fallback
+  → getThumbnailUrl(): TL thumbnail > JW thumbnail > JW poster fallback
+```
+- VideoCard, analyze page, search page 모두 JW Player fallback 적용
+
+### TwelveLabs 대시보드 제목 제한
+- `system_metadata.filename`은 URL 파일명에서 자동 추출 (read-only, 변경 불가)
+- URL 업로드 시 `tNNiIpzO-M4qEmlcb.mp4` 같은 파일명이 표시됨
+- 앱에서는 `user_metadata.title`로 올바른 제목 표시
 
 ### 2026 Super Bowl 매핑 현황
 | 브랜드 | TwelveLabs (YT경로) | JW Player | 비고 |
 |---|---|---|---|
 | Life360 | `698aff01...` | `VbZSANvI` | 양쪽 존재 |
 | Manscaped | `698b01d2...` | `azPq0YHz` | 양쪽 존재 |
-| Tecovas | ❌ (YT 없음) | `tNNiIpzO` → `698c3086...` | JW→TL 완료 |
+| Tecovas | ❌ (YT 없음) | `tNNiIpzO` → `698c3408...` | JW→TL 완료 |
 | Ro Serena | ❌ (목록에 없음) | `wdRWvzLj` | JW만 |
 | 나머지 32개 | ✅ | ❌ | TL만 (YT 경로) |
 
@@ -77,6 +95,10 @@ GCS Bucket (gs://videos_from_ask)     JW Player (CDN + Player)
                      TwelveLabs Index
                   698c2e05c4d60db04d92a0ac
                   (search, analysis, embeddings)
+                            │
+                     AdLand.TV App (Next.js)
+                  JW Player HLS fallback 재생
+                  user_metadata 기반 제목/태그 표시
 ```
 
 ## Key Info
@@ -101,10 +123,17 @@ GCS Bucket (gs://videos_from_ask)     JW Player (CDN + Player)
 - **New index**: `698c2e05c4d60db04d92a0ac` (JW Player 영상용)
 - **Old index**: `6979ae8323c828386368e5bd` (YouTube 경로 영상 36개)
 
+### SDK 참고
+- `user_metadata` (snake_case): SDK `.list()`, `.retrieve()` 응답에서 사용
+- `userMetadata` (camelCase): SDK `.update()`, `.create()` 요청에서 사용
+
 ## Resume Commands
 ```bash
-# JW Player → TwelveLabs 단건 테스트
+# JW Player → TwelveLabs 단건 업로드+분석
 node scripts/jw-to-tl-test.js tNNiIpzO
+
+# 강제 재처리 (기존 삭제 후 재업로드)
+node scripts/jw-to-tl-test.js tNNiIpzO --force
 
 # GCS 접근 확인
 export PATH="/opt/homebrew/share/google-cloud-sdk/bin:$PATH"
@@ -113,6 +142,9 @@ gsutil ls gs://videos_from_ask | head -20
 # Git: feature branch
 git checkout feature/jwplayer-integration
 # YouTube 버전 복구: git checkout v1-youtube
+
+# 앱 개발 서버
+cd app && npm run dev
 ```
 
 ## Open Questions

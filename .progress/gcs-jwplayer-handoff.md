@@ -1,6 +1,6 @@
 # Handoff: GCS Bucket + JW Player Integration
 
-## Status: Paused (2026-02-10)
+## Status: In Progress (2026-02-11)
 
 ## What's Done
 - [x] Google Cloud SDK 설치 (`gcloud`, `gsutil`)
@@ -8,25 +8,74 @@
 - [x] `gs://videos_from_ask` 버킷 접근 확인 → **86,260개 파일**
 - [x] Super Bowl 파일명 검색 → 227개 매칭
 - [x] JW Player 계정 초대 받음 (ari@marketecture.tv → content editor)
-- [x] Super Bowl 2026 광고 34개 TwelveLabs 인덱싱 완료 (adland-agent)
+- [x] JW Player 계정 생성 완료 (Meeran Kim, Content-editor 권한)
+- [x] Super Bowl 2026 광고 36개 TwelveLabs 인덱싱 완료 (adland-agent, YouTube 경로)
+- [x] JW Player 구조 분석 완료 (아래 상세)
+- [x] JW Player → TwelveLabs URL 업로드 파이프라인 검증 완료
+- [x] Tecovas 테스트 성공 (JW `tNNiIpzO` → TL `698c3086c4d60db04d92a0f5`)
 
 ## What's Next
-- [ ] JW Player 계정 생성 (초대 이메일 "GET STARTED" 클릭)
-- [ ] JW Player 대시보드에서 API key/secret 생성
-- [ ] JW Player API로 미디어 라이브러리 탐색 (메타데이터 확인)
-- [ ] GCS 파일명 ↔ JW Player media ID 매핑 방법 파악
-- [ ] 앱에서 JW Player 임베드 재생 구현
+- [ ] `medialibrary.html`에서 media ID 일괄 추출 스크립트 작성
+- [ ] JW Player 호스팅 영상 배치 인덱싱 (batch jw-to-tl)
+- [ ] Ari에게 JW Player API key 요청 (content-editor로는 생성 불가)
+- [ ] 앱에서 JW Player 임베드 재생 구현 (jw_media_id 메타데이터 활용)
+- [ ] External video (m.adland.tv) 영상 인덱싱 전략 결정
+
+## Key Findings (2026-02-11)
+
+### JW Player CDN은 API key 없이 개별 미디어 조회 가능
+```
+https://cdn.jwplayer.com/v2/media/{mediaId}
+→ title, duration, MP4 URLs (180p~1080p), HLS, thumbnails
+```
+- 목록/검색 조회는 불가 (API key 필요)
+- Site ID: `LKnEu5Hs`
+
+### adland.tv 비디오 임베딩 구조
+| 상황 | 플레이어 | 예시 |
+|---|---|---|
+| JW Player 호스팅 영상 | JW Player iframe | Tecovas (`tNNiIpzO-19i2Zbpi`) |
+| YouTube에 있는 영상 | YouTube iframe | Dunkin' (`youtube.com/watch?v=...`) |
+| 오래된 외부 영상 | JW Player (external URL) | `m.adland.tv/파일.mp4` 참조 |
+
+### JW Player 미디어 타입
+- **Hosted video** (Feb 2026, 4개): JW CDN에 직접 호스팅, HLS+MP4, 실제 duration
+- **External video** (Apr 2025, 213개+): `m.adland.tv` MP4 참조, duration 0
+
+### URL 업로드 파이프라인 (검증 완료)
+```
+JW Player Media ID
+  → CDN JSON 조회 (https://cdn.jwplayer.com/v2/media/{id})
+  → MP4 URL 추출 (최고 화질)
+  → TwelveLabs SDK videoUrl 업로드 (다운로드 불필요)
+  → 메타데이터 업데이트 (jw_media_id, jw_player_id 등)
+```
+- 스크립트: `scripts/jw-to-tl-test.js`
+- ~10초 소요 (30초 영상 기준)
+
+### 2026 Super Bowl 매핑 현황
+| 브랜드 | TwelveLabs (YT경로) | JW Player | 비고 |
+|---|---|---|---|
+| Life360 | `698aff01...` | `VbZSANvI` | 양쪽 존재 |
+| Manscaped | `698b01d2...` | `azPq0YHz` | 양쪽 존재 |
+| Tecovas | ❌ (YT 없음) | `tNNiIpzO` → `698c3086...` | JW→TL 완료 |
+| Ro Serena | ❌ (목록에 없음) | `wdRWvzLj` | JW만 |
+| 나머지 32개 | ✅ | ❌ | TL만 (YT 경로) |
 
 ## Architecture Overview
 
 ```
 GCS Bucket (gs://videos_from_ask)     JW Player (CDN + Player)
   86,260 raw video files                 Media library with metadata
-  대부분 숫자 ID 파일명                     title, tags, description
+  대부분 숫자 ID 파일명                     title, tags (Super Bowl 연도별)
          │                                        │
-         └──── 매핑 필요 (GCS filename ↔ JW media ID) ────┘
+         │                               Hosted: JW CDN MP4/HLS
+         │                               External: m.adland.tv MP4
+         │                                        │
+         └──── 매핑 미확인 ────────────────────────┘
                             │
                      TwelveLabs Index
+                  698c2e05c4d60db04d92a0ac
                   (search, analysis, embeddings)
 ```
 
@@ -36,41 +85,38 @@ GCS Bucket (gs://videos_from_ask)     JW Player (CDN + Player)
 - **Bucket**: `gs://videos_from_ask`
 - **Files**: 86,260개 mp4/mov
 - **Access**: gsutil 인증 완료 (Miranda 계정)
-- **파일명 패턴**:
-  - 숫자 ID: `00_10700_hd.mp4` (대다수, 메타데이터 없음)
-  - 제목 기반: `videos_original_budweiser_2017_super_bowl_commercial_born_the_hard_way.mp4`
-  - 기타: `y2mate.com_-_heinz.mp4`, `wwwffarm.mp4`
-- **PATH 필요**: `export PATH="/opt/homebrew/share/google-cloud-sdk/bin:$PATH"`
+- **PATH**: `export PATH="/opt/homebrew/share/google-cloud-sdk/bin:$PATH"`
 
 ### JW Player
-- **Player script**: `https://cdn.jwplayer.com/players/{mediaId}-{playerId}.js`
-- **Player ID**: `19i2Zbpi` (adland.tv 설정)
-- **Sample media ID**: `tNNilpzO`
-- **API docs**: https://docs.jwplayer.com/platform/reference/
-- **Dashboard**: https://dashboard.jwplayer.com
-- **Media API**: `GET /v2/media/?q=super bowl` (API key 필요)
+- **Player ID**: `19i2Zbpi`
+- **Site ID**: `LKnEu5Hs`
+- **Dashboard**: https://dashboard.jwplayer.com/p/account/property/LKnEu5Hs
+- **CDN media**: `https://cdn.jwplayer.com/v2/media/{mediaId}`
+- **CDN embed**: `https://cdn.jwplayer.com/players/{mediaId}-19i2Zbpi.html`
+- **권한**: Content-editor (API key 생성 불가, admin 필요)
+- **Tags**: Super Bowl 연도별 태그 존재 (1969~현재)
+- **"super bowl" 검색**: 217개 (hosted 4 + external 213)
 
-### Super Bowl 2026 (adland-agent 완료)
-- 34/35 완료 (Tecovas 1개 실패 - YouTube에 없음)
-- Progress: `.progress/2026-super-bowl-lx-commercials.json`
-- 이건 YouTube → TwelveLabs 경로. GCS/JW Player 경로와 별개.
+### TwelveLabs Indexes
+- **New index**: `698c2e05c4d60db04d92a0ac` (JW Player 영상용)
+- **Old index**: `6979ae8323c828386368e5bd` (YouTube 경로 영상 36개)
 
 ## Resume Commands
 ```bash
+# JW Player → TwelveLabs 단건 테스트
+node scripts/jw-to-tl-test.js tNNiIpzO
+
 # GCS 접근 확인
 export PATH="/opt/homebrew/share/google-cloud-sdk/bin:$PATH"
 gsutil ls gs://videos_from_ask | head -20
 
-# Super Bowl 파일 검색
-gsutil ls gs://videos_from_ask | grep -i "super.bowl" | wc -l
-
-# JW Player API 테스트 (API key 생성 후)
-curl -H "Authorization: Bearer {API_KEY}" \
-  "https://api.jwplayer.com/v2/sites/{SITE_ID}/media/?q=super+bowl&page_length=10"
+# Git: feature branch
+git checkout feature/jwplayer-integration
+# YouTube 버전 복구: git checkout v1-youtube
 ```
 
 ## Open Questions
-1. JW Player에 86,000개 전체가 등록되어 있나? 아니면 일부만?
+1. JW Player에 86,000개 전체가 등록되어 있나? (API key로 확인 필요)
 2. GCS 파일명과 JW Player media ID 간 매핑이 존재하나?
-3. JW Player 메타데이터에 카테고리/태그가 있나? (Super Bowl, 브랜드 등)
-4. 최종 목표: 앱에서 JW Player로 재생? GCS에서 직접 TwelveLabs 인덱싱? 둘 다?
+3. External video의 `m.adland.tv` URL은 GCS에서 서빙되는 건가?
+4. 두 TL 인덱스 (YT경로 vs JW경로)를 통합할 것인가, 분리 유지할 것인가?

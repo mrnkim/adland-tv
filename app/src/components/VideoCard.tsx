@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { VideoData, SearchResult } from '@/types';
+import { getThumbnailUrl } from '@/lib/videoUrl';
 
 interface VideoCardProps {
   video: VideoData | SearchResult;
@@ -30,9 +31,7 @@ export default function VideoCard({ video, onClick, showScore = false }: VideoCa
   const isSearchResult = 'video_id' in video;
 
   const id = isSearchResult ? video.video_id : video._id;
-  const thumbnailUrl = isSearchResult
-    ? video.thumbnail_url
-    : video.hls?.thumbnail_urls?.[0];
+  const thumbnailUrl = getThumbnailUrl(video);
   const title = isSearchResult
     ? video.video_title || video.metadata?.title
     : video.user_metadata?.title || video.system_metadata?.video_title;

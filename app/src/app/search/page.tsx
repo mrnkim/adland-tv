@@ -9,6 +9,7 @@ import VideoModal from '@/components/VideoModal';
 import FilterSidebar from '@/components/FilterSidebar';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { SearchResult, ActiveFilters, VideoData } from '@/types';
+import { getVideoUrl as resolveVideoUrl } from '@/lib/videoUrl';
 
 function SearchPageContent() {
   const searchParams = useSearchParams();
@@ -286,9 +287,7 @@ function SearchPageContent() {
 
   // Helper to get video properties from either type
   const getVideoUrl = (video: SearchResult | VideoData | null) => {
-    if (!video) return undefined;
-    if (isSearchResult(video)) return video.video_url;
-    return video.hls?.video_url;
+    return resolveVideoUrl(video);
   };
 
   const getVideoTitle = (video: SearchResult | VideoData | null) => {

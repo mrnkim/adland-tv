@@ -8,6 +8,7 @@ import AnalysisPanel from '@/components/AnalysisPanel';
 import HlsPlayer from '@/components/HlsPlayer';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { VideoData } from '@/types';
+import { getVideoUrl } from '@/lib/videoUrl';
 
 const CATEGORY_ICONS: Record<string, string> = {
   'Auto': 'M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10',
@@ -260,10 +261,10 @@ function AnalyzePageContent() {
             {/* Left: Video Player + Metadata */}
             <div>
               <div className="bg-black rounded-xl overflow-hidden aspect-video">
-                {selectedVideo.hls?.video_url ? (
+                {getVideoUrl(selectedVideo) ? (
                   <HlsPlayer
                     ref={videoRef}
-                    src={selectedVideo.hls.video_url}
+                    src={getVideoUrl(selectedVideo)!}
                     autoPlay
                     className="w-full h-full object-contain"
                   />

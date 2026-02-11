@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import VideoCard from '@/components/VideoCard';
 import AnalysisPanel from '@/components/AnalysisPanel';
 import HlsPlayer from '@/components/HlsPlayer';
+import JwPlayer, { JwPlayerHandle } from '@/components/JwPlayer';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { VideoData } from '@/types';
 import { getVideoUrl } from '@/lib/videoUrl';
@@ -40,6 +41,7 @@ function AnalyzePageContent() {
   const autoOpenVideoId = searchParams.get('videoId');
   const autoOpenHandled = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const jwPlayerRef = useRef<JwPlayerHandle>(null);
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<VideoData | null>(null);
@@ -261,7 +263,14 @@ function AnalyzePageContent() {
             {/* Left: Video Player + Metadata */}
             <div>
               <div className="bg-black rounded-xl overflow-hidden aspect-video">
-                {getVideoUrl(selectedVideo) ? (
+                {selectedVideo.user_metadata?.jw_media_id ? (
+                  <JwPlayer
+                    ref={jwPlayerRef}
+                    mediaId={selectedVideo.user_metadata.jw_media_id}
+                    autoPlay
+                    className="w-full h-full"
+                  />
+                ) : getVideoUrl(selectedVideo) ? (
                   <HlsPlayer
                     ref={videoRef}
                     src={getVideoUrl(selectedVideo)!}
@@ -320,10 +329,15 @@ function AnalyzePageContent() {
               <AnalysisPanel
                 videoId={selectedVideo._id}
                 onSeek={(seconds) => {
-                  const video = videoRef.current;
-                  if (video) {
-                    video.currentTime = seconds;
-                    video.play().catch(() => {});
+                  if (selectedVideo.user_metadata?.jw_media_id && jwPlayerRef.current) {
+                    jwPlayerRef.current.seek(seconds);
+                    jwPlayerRef.current.play();
+                  } else {
+                    const video = videoRef.current;
+                    if (video) {
+                      video.currentTime = seconds;
+                      video.play().catch(() => {});
+                    }
                   }
                 }}
               />

@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { UserMetadata } from '@/types';
 import HlsPlayer from '@/components/HlsPlayer';
+import JwPlayer, { JwPlayerHandle } from '@/components/JwPlayer';
 
 // Format seconds to mm:ss
 const formatTime = (seconds: number): string => {
@@ -16,6 +17,7 @@ interface VideoModalProps {
   onClose: () => void;
   videoUrl?: string;
   videoId?: string;
+  jwMediaId?: string;
   title?: string;
   metadata?: UserMetadata;
   startTime?: number;
@@ -31,6 +33,7 @@ export default function VideoModal({
   onClose,
   videoUrl,
   videoId,
+  jwMediaId,
   title,
   metadata,
   startTime,
@@ -42,7 +45,10 @@ export default function VideoModal({
 }: VideoModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const jwRef = useRef<JwPlayerHandle>(null);
   const [viewMode, setViewMode] = useState<'clip' | 'full'>(variant);
+  const [jwReady, setJwReady] = useState(false);
+  const useJw = !!jwMediaId;
 
   const isClip = viewMode === 'clip';
 
@@ -50,8 +56,11 @@ export default function VideoModal({
   useEffect(() => {
     if (isOpen) {
       setViewMode(variant);
+      setJwReady(false);
     }
   }, [isOpen, variant]);
+
+  const handleJwReady = useCallback(() => setJwReady(true), []);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -71,12 +80,39 @@ export default function VideoModal({
 
   // Seek to startTime after HLS loads and handle endTime clipping (only in clip mode)
   useEffect(() => {
-    if (!isOpen || !videoRef.current) return;
+    if (!isOpen) return;
 
+    // JW Player clip handling
+    if (useJw) {
+      if (!jwReady) return;
+      const jw = jwRef.current;
+      if (!jw) return;
+
+      if (isClip) {
+        if (startTime !== undefined && startTime > 0) {
+          jw.seek(startTime);
+        }
+        if (endTime !== undefined) {
+          const handleTime = (e: { position: number }) => {
+            if (e.position >= endTime) {
+              jw.pause();
+              if (startTime !== undefined) jw.seek(startTime);
+            }
+          };
+          jw.on('time', handleTime);
+          return () => { jw.off('time'); };
+        }
+      } else if (variant === 'clip') {
+        jw.seek(0);
+      }
+      return;
+    }
+
+    // HlsPlayer clip handling
+    if (!videoRef.current) return;
     const video = videoRef.current;
 
     if (isClip) {
-      // Clip mode: seek to start and loop within segment
       const seekToStart = () => {
         if (startTime !== undefined && startTime > 0) {
           video.currentTime = startTime;
@@ -107,10 +143,9 @@ export default function VideoModal({
         video.removeEventListener('timeupdate', handleTimeUpdate);
       };
     } else if (variant === 'clip') {
-      // Expanded from clip to full: restart from beginning
       video.currentTime = 0;
     }
-  }, [isOpen, videoUrl, startTime, endTime, isClip, variant]);
+  }, [isOpen, videoUrl, startTime, endTime, isClip, variant, useJw, jwReady]);
 
   if (!isOpen) return null;
 
@@ -161,8 +196,16 @@ export default function VideoModal({
         </div>
 
         {/* Video Player */}
-        <div className="relative bg-black" style={{ height: isClip ? '50vh' : '45vh', minHeight: '240px' }}>
-          {videoUrl ? (
+        <div className="relative bg-black overflow-hidden" style={{ height: isClip ? '50vh' : '45vh', minHeight: '240px' }}>
+          {useJw ? (
+            <JwPlayer
+              ref={jwRef}
+              mediaId={jwMediaId!}
+              autoPlay
+              onReady={handleJwReady}
+              className="w-full h-full"
+            />
+          ) : videoUrl ? (
             <HlsPlayer
               ref={videoRef}
               src={videoUrl}

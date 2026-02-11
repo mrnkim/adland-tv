@@ -592,6 +592,7 @@ function SearchPageContent() {
         onClose={onClose}
         videoId={selectedVideo ? (isSearchResult(selectedVideo) ? selectedVideo.video_id : selectedVideo._id) : undefined}
         videoUrl={getVideoUrl(selectedVideo)}
+        jwMediaId={getVideoMetadata(selectedVideo)?.jw_media_id}
         title={getVideoTitle(selectedVideo)}
         metadata={getVideoMetadata(selectedVideo)}
         startTime={getClipStartTime(selectedVideo)}

@@ -18,11 +18,12 @@
 - [x] 앱에서 JW Player 재생 지원 (videoUrl.ts 헬퍼, HLS/썸네일 CDN fallback)
 - [x] 프론트엔드 업데이트 (analyze, search, VideoCard → JW Player fallback)
 - [x] UserMetadata 타입에 JW Player 필드 추가
+- [x] JW Player 네이티브 플레이어 통합 (JS SDK 기반, 픽셀 크기 렌더링)
+- [x] VideoModal + Analyze page에서 JW Player 재생 (jw_media_id 있으면 JW, 없으면 HLS fallback)
 
 ## What's Next
-- [ ] `medialibrary.html`에서 media ID 일괄 추출 스크립트 작성
-- [ ] JW Player 호스팅 영상 배치 인덱싱 (batch jw-to-tl)
-- [ ] Ari에게 JW Player API key 요청 (content-editor로는 생성 불가)
+- [ ] `medialibrary.html`에서 media ID 일괄 추출 → 50개 배치 인덱싱
+- [ ] 배치 결과 확인 후 Ari에게 JW Player API key 요청
 - [ ] External video (m.adland.tv) 영상 인덱싱 전략 결정
 
 ## Key Findings (2026-02-11)
@@ -58,13 +59,20 @@ JW Player Media ID
 - 스크립트: `scripts/jw-to-tl-test.js`
 - ~15초 소요 (30초 영상 기준, AI 분석 포함)
 
-### 앱 JW Player 재생 지원
+### 앱 JW Player 재생 (네이티브 플레이어)
 ```
+app/src/components/JwPlayer.tsx
+  → JW Player JS SDK 로드 (cdn.jwplayer.com/libraries/19i2Zbpi.js)
+  → 픽셀 기반 크기로 초기화 (padding-based aspect ratio 문제 회피)
+  → imperative handle: seek(), play(), pause(), on(), off()
+
 app/src/lib/videoUrl.ts
   → getVideoUrl(): TL HLS > JW Player HLS fallback
   → getThumbnailUrl(): TL thumbnail > JW thumbnail > JW poster fallback
 ```
-- VideoCard, analyze page, search page 모두 JW Player fallback 적용
+- jw_media_id 있으면 → JW Player 네이티브 플레이어
+- jw_media_id 없으면 → HlsPlayer (TwelveLabs HLS) fallback
+- VideoModal, analyze page, search page 모두 적용
 
 ### TwelveLabs 대시보드 제목 제한
 - `system_metadata.filename`은 URL 파일명에서 자동 추출 (read-only, 변경 불가)
@@ -97,7 +105,8 @@ GCS Bucket (gs://videos_from_ask)     JW Player (CDN + Player)
                   (search, analysis, embeddings)
                             │
                      AdLand.TV App (Next.js)
-                  JW Player HLS fallback 재생
+                  JW Player 네이티브 플레이어 (jw_media_id 기반)
+                  HlsPlayer fallback (jw_media_id 없는 경우)
                   user_metadata 기반 제목/태그 표시
 ```
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { TwelveLabs } from 'twelvelabs-js';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 180;
 
 const getClient = () => {
   const apiKey = process.env.TWELVELABS_API_KEY;
@@ -144,10 +144,19 @@ const ALL_SCHEMA = {
 };
 
 function parseResult(result: unknown): Record<string, unknown> {
+  // SDK may return result.data as a parsed object or a JSON string
+  const data = (result as any)?.data;
+
+  // Already a parsed object — return directly
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    return data as Record<string, unknown>;
+  }
+
+  // Try parsing as JSON string
   try {
     const text = typeof result === 'string'
       ? result
-      : (result as any).data || (result as any).text || String(result);
+      : data || (result as any).text || String(result);
     const cleanText = String(text)
       .replace(/```json\n?/g, '')
       .replace(/```\n?/g, '')
@@ -156,7 +165,7 @@ function parseResult(result: unknown): Record<string, unknown> {
   } catch {
     const rawText = typeof result === 'string'
       ? result
-      : (result as any).data || (result as any).text || String(result);
+      : data || (result as any).text || String(result);
     return { summary: String(rawText) };
   }
 }
@@ -188,14 +197,17 @@ export async function POST(request: NextRequest) {
       schema = ALL_SCHEMA as Record<string, unknown>;
     }
 
-    const result = await client.analyze({
-      videoId,
-      prompt,
-      responseFormat: {
-        type: 'json_schema',
-        jsonSchema: schema,
+    const result = await client.analyze(
+      {
+        videoId,
+        prompt,
+        responseFormat: {
+          type: 'json_schema',
+          jsonSchema: schema,
+        },
       },
-    });
+      { timeoutInSeconds: 180 },
+    );
 
     const analysis = parseResult(result);
 

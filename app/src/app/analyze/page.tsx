@@ -6,8 +6,10 @@ import { useQuery } from '@tanstack/react-query';
 import VideoCard from '@/components/VideoCard';
 import AnalysisPanel from '@/components/AnalysisPanel';
 import HlsPlayer from '@/components/HlsPlayer';
+import JwPlayer, { JwPlayerHandle } from '@/components/JwPlayer';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { VideoData } from '@/types';
+import { getVideoUrl } from '@/lib/videoUrl';
 
 const CATEGORY_ICONS: Record<string, string> = {
   'Auto': 'M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10',
@@ -39,6 +41,7 @@ function AnalyzePageContent() {
   const autoOpenVideoId = searchParams.get('videoId');
   const autoOpenHandled = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const jwPlayerRef = useRef<JwPlayerHandle>(null);
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<VideoData | null>(null);
@@ -260,10 +263,17 @@ function AnalyzePageContent() {
             {/* Left: Video Player + Metadata */}
             <div>
               <div className="bg-black rounded-xl overflow-hidden aspect-video">
-                {selectedVideo.hls?.video_url ? (
+                {selectedVideo.user_metadata?.jw_media_id ? (
+                  <JwPlayer
+                    ref={jwPlayerRef}
+                    mediaId={selectedVideo.user_metadata.jw_media_id}
+                    autoPlay
+                    className="w-full h-full"
+                  />
+                ) : getVideoUrl(selectedVideo) ? (
                   <HlsPlayer
                     ref={videoRef}
-                    src={selectedVideo.hls.video_url}
+                    src={getVideoUrl(selectedVideo)!}
                     autoPlay
                     className="w-full h-full object-contain"
                   />
@@ -309,6 +319,21 @@ function AnalyzePageContent() {
                       Sentiment: {selectedVideo.user_metadata.sentiment}
                     </span>
                   )}
+                  {selectedVideo.user_metadata?.product_category && (
+                    <span className="text-xs bg-orange-100 text-orange-700 px-3 py-1 rounded-full">
+                      Category: {selectedVideo.user_metadata.product_category}
+                    </span>
+                  )}
+                  {selectedVideo.user_metadata?.era_decade && (
+                    <span className="text-xs bg-gray-100 text-gray-700 px-3 py-1 rounded-full">
+                      Era: {selectedVideo.user_metadata.era_decade}
+                    </span>
+                  )}
+                  {selectedVideo.user_metadata?.celebrities && (
+                    <span className="text-xs bg-pink-100 text-pink-700 px-3 py-1 rounded-full">
+                      Celebrities: {selectedVideo.user_metadata.celebrities}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -319,10 +344,15 @@ function AnalyzePageContent() {
               <AnalysisPanel
                 videoId={selectedVideo._id}
                 onSeek={(seconds) => {
-                  const video = videoRef.current;
-                  if (video) {
-                    video.currentTime = seconds;
-                    video.play().catch(() => {});
+                  if (selectedVideo.user_metadata?.jw_media_id && jwPlayerRef.current) {
+                    jwPlayerRef.current.seek(seconds);
+                    jwPlayerRef.current.play();
+                  } else {
+                    const video = videoRef.current;
+                    if (video) {
+                      video.currentTime = seconds;
+                      video.play().catch(() => {});
+                    }
                   }
                 }}
               />

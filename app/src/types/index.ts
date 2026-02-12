@@ -31,6 +31,10 @@ export interface UserMetadata {
   era_decade?: string;
   celebrities?: string;
   analyzed_at?: string;
+  jw_media_id?: string;
+  jw_player_id?: string;
+  jw_thumbnail?: string;
+  source?: string;
   [key: string]: string | undefined;
 }
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query';
 import { VideoAnalysis } from '@/types';
 import LoadingSpinner from '@/components/LoadingSpinner';
 
@@ -96,15 +96,6 @@ export default function AnalysisPanel({ videoId, autoFetch = false, onSeek }: An
     })),
   });
 
-  // Summary reactive cache
-  const { data: summary } = useQuery<string>({
-    queryKey: ['analysis', videoId, 'summary'],
-    queryFn: () => null as never,
-    enabled: false,
-    staleTime: Infinity,
-    gcTime: ANALYSIS_CACHE_TIME,
-  });
-
   const hasCachedData = sectionQueries.some(q => q.data !== undefined);
 
   // Initialize started from cache or autoFetch
@@ -115,21 +106,6 @@ export default function AnalysisPanel({ videoId, autoFetch = false, onSeek }: An
     );
   });
 
-  // "Analyze All" mutation — splits results into per-section cache
-  const analyzeAll = useMutation({
-    mutationFn: () => fetchAnalysisFromAPI(videoId, 'all'),
-    onSuccess: (result) => {
-      for (const s of SECTIONS) {
-        if (result[s.key] !== undefined) {
-          queryClient.setQueryData(['analysis', videoId, s.key], result[s.key]);
-        }
-      }
-      if (result.summary) {
-        queryClient.setQueryData(['analysis', videoId, 'summary'], result.summary as string);
-      }
-    },
-  });
-
   const handleRunSection = useCallback((key: SectionKey) => {
     const index = SECTIONS.findIndex(s => s.key === key);
     if (index >= 0) {
@@ -137,21 +113,26 @@ export default function AnalysisPanel({ videoId, autoFetch = false, onSeek }: An
     }
   }, [sectionQueries]);
 
+  // "Analyze All" triggers all individual section queries in parallel
   const handleAnalyzeAll = useCallback(() => {
     setStarted(true);
-    analyzeAll.mutate();
-  }, [analyzeAll]);
+    for (const q of sectionQueries) {
+      if (q.data === undefined) q.refetch();
+    }
+  }, [sectionQueries]);
 
   // Auto-fetch all on mount if autoFetch and no cached data
   const [autoFetched, setAutoFetched] = useState(false);
   if (autoFetch && !autoFetched) {
     setAutoFetched(true);
     if (!hasCachedData) {
-      analyzeAll.mutate();
+      for (const q of sectionQueries) {
+        q.refetch();
+      }
     }
   }
 
-  const anyLoading = analyzeAll.isPending || sectionQueries.some(q => q.isFetching);
+  const anyLoading = sectionQueries.some(q => q.isFetching);
 
   // Initial state: show section menu
   if (!started) {
@@ -212,24 +193,17 @@ export default function AnalysisPanel({ videoId, autoFetch = false, onSeek }: An
         </button>
       </div>
 
-      {/* Mutation error */}
-      {analyzeAll.isError && (
+      {/* Section errors (if all failed) */}
+      {sectionQueries.every(q => q.error) && sectionQueries[0].error && (
         <div className="bg-red-50 border border-red-100 rounded-xl p-4">
-          <p className="text-sm text-red-600">{analyzeAll.error?.message || 'Analysis failed'}</p>
-        </div>
-      )}
-
-      {/* Summary */}
-      {summary && (
-        <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
-          <p className="text-sm text-blue-900 leading-relaxed">{summary}</p>
+          <p className="text-sm text-red-600">{sectionQueries[0].error.message || 'Analysis failed'}</p>
         </div>
       )}
 
       {/* Section Cards */}
       {SECTIONS.map((s, i) => {
         const q = sectionQueries[i];
-        const isLoading = q.isFetching || (analyzeAll.isPending && q.data === undefined);
+        const isLoading = q.isFetching;
         const isLoaded = q.data !== undefined;
         const error = q.error?.message;
 

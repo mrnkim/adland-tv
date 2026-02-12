@@ -1,6 +1,6 @@
 # Handoff: GCS Bucket + JW Player Integration
 
-## Status: In Progress (2026-02-11)
+## Status: In Progress (2026-02-12)
 
 ## What's Done
 - [x] Google Cloud SDK 설치 (`gcloud`, `gsutil`)
@@ -20,11 +20,16 @@
 - [x] UserMetadata 타입에 JW Player 필드 추가
 - [x] JW Player 네이티브 플레이어 통합 (JS SDK 기반, 픽셀 크기 렌더링)
 - [x] VideoModal + Analyze page에서 JW Player 재생 (jw_media_id 있으면 JW, 없으면 HLS fallback)
+- [x] Analyze All 수정 (6개 섹션 개별 병렬 호출로 변경, 타임아웃 해결)
+- [x] 타임스탬프 pill 클릭 → 비디오 시크 기능 수정
+- [x] JW Player 대시보드에서 최신 hosted video 48개 media ID 추출 (Playwright)
+- [x] 배치 인제스트 스크립트 작성 (`scripts/jw-batch-ingest.js`)
+- [x] 48개 비디오 배치 인덱싱 + AI 태그 자동 생성 완료 (성공 48, 실패 0)
 
 ## What's Next
-- [ ] `medialibrary.html`에서 media ID 일괄 추출 → 50개 배치 인덱싱
-- [ ] 배치 결과 확인 후 Ari에게 JW Player API key 요청
+- [ ] Ari에게 JW Player API key 요청 (64,000+ 미디어 프로그래매틱 접근용)
 - [ ] External video (m.adland.tv) 영상 인덱싱 전략 결정
+- [ ] 두 TL 인덱스 통합 여부 결정 (YT경로 36개 vs JW경로 48개)
 
 ## Key Findings (2026-02-11)
 
@@ -56,7 +61,8 @@ JW Player Media ID
   → [3] AI 분석 (brand, theme, emotion, visual_style, sentiment, category, era, celebrities)
   → [4] 메타데이터 업데이트 (JW 메타 + AI 태그 통합)
 ```
-- 스크립트: `scripts/jw-to-tl-test.js`
+- 단건 스크립트: `scripts/jw-to-tl-test.js`
+- 배치 스크립트: `scripts/jw-batch-ingest.js` (manifest + progress 기반)
 - ~15초 소요 (30초 영상 기준, AI 분석 포함)
 
 ### 앱 JW Player 재생 (네이티브 플레이어)
@@ -136,12 +142,23 @@ GCS Bucket (gs://videos_from_ask)     JW Player (CDN + Player)
 - `user_metadata` (snake_case): SDK `.list()`, `.retrieve()` 응답에서 사용
 - `userMetadata` (camelCase): SDK `.update()`, `.create()` 요청에서 사용
 
+### 배치 인제스트 결과 (2026-02-12)
+- **manifest**: `scripts/jw-batch-manifest.json` (48개 hosted video)
+- **progress**: `.progress/jw-batch-progress.json` (실시간 저장, resume 가능)
+- **결과**: 48개 성공, 0개 실패
+- 브랜드: Mastercard, Starbucks, John Frieda, Mozilla, Jackson Hole 등 다양
+- 카테고리: Food & Beverage, Finance, Travel, Retail, Healthcare, Beauty 등
+
 ## Resume Commands
 ```bash
 # JW Player → TwelveLabs 단건 업로드+분석
-node scripts/jw-to-tl-test.js tNNiIpzO
+node scripts/jw-to-tl-test.js <jwMediaId>
 
-# 강제 재처리 (기존 삭제 후 재업로드)
+# 배치 인제스트 (manifest 기반, 자동 resume)
+node scripts/jw-batch-ingest.js              # 전체
+node scripts/jw-batch-ingest.js --limit 10   # 10개만
+
+# 강제 재처리 (단건)
 node scripts/jw-to-tl-test.js tNNiIpzO --force
 
 # GCS 접근 확인

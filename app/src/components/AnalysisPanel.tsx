@@ -443,10 +443,13 @@ function TextExtractionContent({ extraction }: { extraction?: VideoAnalysis['tex
 }
 
 function BrandTimelineContent({ timeline, onSeek }: { timeline?: VideoAnalysis['brand_timeline']; onSeek?: (seconds: number) => void }) {
-  if (!timeline?.length) return <p className="text-xs text-gray-400">No brand appearances detected</p>;
+  const filtered = timeline?.filter(item =>
+    !/no visible brand|no specific brand|no brand/i.test(item.description)
+  );
+  if (!filtered?.length) return <p className="text-xs text-gray-400">No brand appearances detected</p>;
   return (
     <div className="space-y-2">
-      {timeline.map((item, i) => (
+      {filtered.map((item, i) => (
         <div key={i} className="flex items-start gap-3 p-2">
           <TimestampBadge timestamp={item.timestamp} className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium flex-shrink-0 mt-0.5" onSeek={onSeek} />
           <div className="flex items-center gap-2">

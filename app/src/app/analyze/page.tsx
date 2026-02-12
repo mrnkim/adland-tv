@@ -319,6 +319,21 @@ function AnalyzePageContent() {
                       Sentiment: {selectedVideo.user_metadata.sentiment}
                     </span>
                   )}
+                  {selectedVideo.user_metadata?.product_category && (
+                    <span className="text-xs bg-orange-100 text-orange-700 px-3 py-1 rounded-full">
+                      Category: {selectedVideo.user_metadata.product_category}
+                    </span>
+                  )}
+                  {selectedVideo.user_metadata?.era_decade && (
+                    <span className="text-xs bg-gray-100 text-gray-700 px-3 py-1 rounded-full">
+                      Era: {selectedVideo.user_metadata.era_decade}
+                    </span>
+                  )}
+                  {selectedVideo.user_metadata?.celebrities && (
+                    <span className="text-xs bg-pink-100 text-pink-700 px-3 py-1 rounded-full">
+                      Celebrities: {selectedVideo.user_metadata.celebrities}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

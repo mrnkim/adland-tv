@@ -136,6 +136,7 @@ async function updateMetadata(videoId, jwMeta, aiTags) {
   const metadata = {
     title: jwMeta.title,
     brand: aiTags.brand || '',
+    ...(jwMeta.title.toLowerCase().includes('super bowl') ? { collection: 'superbowl' } : {}),
     source: 'jwplayer',
     jw_media_id: jwMeta.mediaId,
     jw_player_id: JW_PLAYER_ID,

@@ -15,7 +15,7 @@ interface AnalysisPanelProps {
 // "0:05", "1:30", "00:05-00:15", "0s (00:00) - 4s (00:04)", "4s", "30s"
 function parseTimestamp(ts: string): number | null {
   // Take only the start portion if it's a range
-  const start = ts.split(/\s*-\s/)[0].trim();
+  const start = ts.split(/\s*-\s*/)[0].trim();
 
   // Try mm:ss or hh:mm:ss inside parentheses, e.g. "(00:04)"
   const parenMatch = start.match(/\((\d+:\d+(?::\d+)?)\)/);
